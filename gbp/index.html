@@ -663,8 +663,6 @@ function resolveHit(f){
 }
 function applyHit(from, tgt, atk){
   var dmg = atk.dmg;
-  /* 방장 핸디캡 2: 방장이 주는 대미지 20% 감소 (손 6→4.8, 강타 10→8, 발 12→9.6) — 반올림하면 잽이 안 깎여서 소수점 유지 */
-  if (MODE === 'host' && from.pid === myPid) dmg = Math.max(1, Math.round(dmg * .8 * 10) / 10);
   var big = atk.dmg >= 10;
   var armored = tgt.armorT > 0;
   tgt.hp = Math.max(0, tgt.hp - dmg);
@@ -747,8 +745,7 @@ function releaseHandPunch(){
     var tgt = nearestEnemy(f, CFG.hand.range + 2.2);
     if (tgt){ var d = tgt.pos.clone().sub(f.pos); f.yaw = Math.atan2(d.x, d.z); }
     f.vel.add(facingVec(f).multiplyScalar(heavy?3.2:1.1));
-  } else if (MODE === 'host' && hostDelay > 0) queueHostAtk('h', r);
-  else tryHand(f, r);
+  } else tryHand(f, r);
 }
 function pressFoot(){
   if (!started) return;
@@ -761,24 +758,10 @@ function pressFoot(){
     if (tgt){ var d = tgt.pos.clone().sub(f.pos); f.yaw = Math.atan2(d.x, d.z); }
     f.vel.add(facingVec(f).multiplyScalar(1.6));
     atkQ.push('f');
-  } else if (MODE === 'host' && hostDelay > 0) queueHostAtk('f');
-  else tryFoot(f);
+  } else tryFoot(f);
 }
 
-/* ── 방장 핸디캡 + 핑순 승계 ──
-   참가자들이 보고한 핑의 중간값 절반(30~100ms)만큼 방장의 공격 입력을 늦게 반영해
-   "방장 = 심판 폰" 이점을 상쇄. 승계 순서(hostOrder)도 핑 낮은 순으로 재정렬해 전파. */
-function queueHostAtk(k, r){
-  for (var i=0;i<hostAtkQ.length;i++) if (hostAtkQ[i].k === k) return;
-  hostAtkQ.push({ k:k, r:r||0, at: time + hostDelay });
-}
-function pumpHostAtk(){
-  while (hostAtkQ.length && hostAtkQ[0].at <= time){
-    var it = hostAtkQ.shift(), f = me();
-    if (!f) continue;
-    if (it.k === 'h') tryHand(f, it.r); else tryFoot(f);
-  }
-}
+/* ── 핑순 승계 — 참가자들의 핑을 모아 승계 순서(hostOrder)를 핑 낮은 순으로 재정렬해 전파 */
 /* 참가자의 공격 명령이 호스트 쪽 이전 동작과 겹쳐 도착해도 씹히지 않게 잠깐 버퍼했다가 실행 */
 function tryClientAtk(f, k, r){
   if (k === 'f' && time < f.footReady) return true; /* 쿨타임 중 → 소모 처리 */
@@ -795,14 +778,6 @@ function pumpPendAtk(all){
   }
 }
 function recalcHostMeta(){
-  var rtts = [], pid;
-  for (pid in conns){ var fr = fighters[pid]; if (fr && fr.rtt != null) rtts.push(fr.rtt); }
-  if (!Object.keys(conns).length) hostDelay = 0;
-  else if (!rtts.length) hostDelay = .03;
-  else {
-    rtts.sort(function(a,b){ return a-b; });
-    hostDelay = Math.min(.1, Math.max(.03, rtts[Math.floor(rtts.length/2)]/2000));
-  }
   if (!hostOrder.length || !hostOrder[0]){ updateRoomChip(); return; }
   var tail = hostOrder.slice(1);
   tail.sort(function(a,b){
@@ -984,7 +959,7 @@ var peer = null, conns = {}, hostConn = null;
 var roomCode = null, pingMs = null, lastPingAt = 0;
 var ORDER = [], hostOrder = [], migrating = false, hostLostFlag = false;
 var sendAcc = 0, inAcc = 0, pingAcc = 0;
-var hostDelay = 0, hostAtkQ = [], metaAcc = 0;
+var metaAcc = 0;
 function netEvent(ev){ if (MODE === 'host') bc({ t:'ev', v:ev }); }
 function bc(msg, exceptPid){
   for (var pid in conns){
@@ -1023,7 +998,7 @@ function startHost(){
   claimHost(false, 0);
 }
 function claimHost(migrated, attempt){
-  hostAtkQ.length = 0; hostDelay = 0; metaAcc = 0;
+  metaAcc = 0;
   peer = new Peer('gbp-' + roomCode, { debug: 0 });
   peer.on('open', function(){
     if (migrated){
@@ -1309,8 +1284,7 @@ function updateRoomChip(){
   if (MODE === 'practice' || !roomCode){ el.style.display = 'none'; return; }
   el.style.display = 'block';
   el.innerHTML = '방 <b>' + roomCode + '</b> · ' + list().length + '명' +
-    (MODE==='client' && pingMs!=null ? ' · ' + pingMs + 'ms'
-      : (MODE==='host' ? ' · 호스트' + (hostDelay>0 ? '(핸디 -'+Math.round(hostDelay*1000)+'ms)' : '') : ''));
+    (MODE==='client' && pingMs!=null ? ' · ' + pingMs + 'ms' : (MODE==='host' ? ' · 호스트' : ''));
 }
 $('roomInfo').addEventListener('click', function(){
   if (!roomCode) return;
@@ -1606,7 +1580,6 @@ function loop(){
     } else {
       for (var k=0;k<all.length;k++) updateFighter(all[k], dt);
       if (MODE === 'host'){
-        pumpHostAtk();
         pumpPendAtk(all);
         sendAcc += realDt;
         if (sendAcc >= CFG.snapHz){
