@@ -947,6 +947,7 @@ function startHost(){
     addFeed('방 생성 — 코드 <b>' + roomCode + '</b>');
   });
   peer.on('connection', function(c){ setupHostConn(c); });
+  peer.on('disconnected', function(){ try { peer.reconnect(); } catch(e){} });
   peer.on('error', function(err){
     if (err && err.type === 'unavailable-id'){ startHost(); return; }
     netFail(err);
@@ -1012,6 +1013,7 @@ function startJoin(code){
     hostConn.on('close', function(){ if (started) hostLeft(); else netFail({ type:'peer-unavailable' }); });
     hostConn.on('error', function(err){ netFail(err); });
   });
+  peer.on('disconnected', function(){ try { peer.reconnect(); } catch(e){} });
   peer.on('error', function(err){ netFail(err); });
   joinTimeout = setTimeout(function(){ if (!started) netFail({ type:'timeout' }); }, 10000);
 }
@@ -1285,8 +1287,21 @@ $('confirmOk').addEventListener('click', function(){
 function enterGame(){
   hideNetOv();
   started = true;
+  keepAwake();
   updateScoreUI(); updateRoomChip();
 }
+/* 게임 중 화면 자동 꺼짐 방지(지원 기기) — 방장 폰이 잠들어 방이 끊기는 것 완화 */
+var wakeLock = null;
+function keepAwake(){
+  try {
+    if (navigator.wakeLock && navigator.wakeLock.request)
+      navigator.wakeLock.request('screen').then(function(l){ wakeLock = l; }, function(){});
+  } catch(e){}
+}
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible' && started) keepAwake();
+});
+addEventListener('pagehide', function(){ try { if (peer) peer.destroy(); } catch(e){} });
 
 /* ── 개발 패널 ─────────────────────────── */
 $('menuBtn').addEventListener('click', function(){ $('devPanel').hidden = !$('devPanel').hidden; });
