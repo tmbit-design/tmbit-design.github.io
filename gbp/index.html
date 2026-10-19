@@ -41,6 +41,8 @@ input::placeholder{color:var(--quiet)}
 /* 강제 가로: 물리 safe-area를 논리 방향으로 재매핑 */
 #app.rot{--sl:env(safe-area-inset-top,0px);--sr:env(safe-area-inset-bottom,0px);
   --st:env(safe-area-inset-right,0px);--sb:env(safe-area-inset-left,0px)}
+/* 회전 모드에선 터치 축이 화면 기준이라, 세로 스크롤 요소는 pan-x가 돼야 움직인다 */
+#app.rot #devPanel{touch-action:pan-x}
 #stage{position:fixed;inset:0}
 #stage canvas{display:block}
 
@@ -902,6 +904,7 @@ var INCOMPAT_MSG = '<b>이 환경에선 실시간 연결(WebRTC)이 꺼져 있�
   '<br><small style="color:var(--quiet)">tmbit-design.github.io/gbp</small>';
 var peer = null, conns = {}, hostConn = null;
 var roomCode = null, pingMs = null, lastPingAt = 0;
+var ORDER = [], hostOrder = [], migrating = false, hostLostFlag = false;
 var sendAcc = 0, inAcc = 0, pingAcc = 0;
 function netEvent(ev){ if (MODE === 'host') bc({ t:'ev', v:ev }); }
 function bc(msg, exceptPid){
@@ -938,18 +941,39 @@ function fullRoster(){
 /* 호스트 */
 function startHost(){
   roomCode = genCode();
+  claimHost(false, 0);
+}
+function claimHost(migrated, attempt){
   peer = new Peer('gbp-' + roomCode, { debug: 0 });
   peer.on('open', function(){
-    myPid = peer.id;
-    makeFighter(myPid, myName, myCi);
-    enterGame();
-    updateRoomChip();
-    addFeed('방 생성 — 코드 <b>' + roomCode + '</b>');
+    if (migrated){
+      migrating = false; hostLostFlag = false;
+      conns = {};
+      hostOrder = [myPid].concat(ORDER.filter(function(p){ return p !== myPid && !!fighters[p]; }));
+      list().forEach(function(f){ if (f.pid !== myPid){ f.input.x = 0; f.input.z = 0; f.vel.set(0,0,0); } });
+      hideNetOv();
+      addFeed('<b>' + dispName(myPid) + '</b> 님이 새 방장! (코드 유지)');
+      updateRoomChip(); updateScoreUI();
+    } else {
+      myPid = peer.id;
+      hostOrder = [myPid];
+      makeFighter(myPid, myName, myCi);
+      enterGame();
+      updateRoomChip();
+      addFeed('방 생성 — 코드 <b>' + roomCode + '</b>');
+    }
   });
   peer.on('connection', function(c){ setupHostConn(c); });
   peer.on('disconnected', function(){ try { peer.reconnect(); } catch(e){} });
   peer.on('error', function(err){
-    if (err && err.type === 'unavailable-id'){ startHost(); return; }
+    var t = err && err.type;
+    if (t === 'unavailable-id' && !migrated){ startHost(); return; }
+    if (migrated && (t === 'unavailable-id' || t === 'network' || t === 'socket-error')){
+      if (attempt < 12){ setTimeout(function(){ claimHost(true, attempt + 1); }, 2000); return; }
+      migrating = false; started = false;
+      showNetOv('<b>방장 승계에 실패했어.</b><br>방이 종료됐어 — 새로 만들어줘.', { home:true, spin:false });
+      return;
+    }
     netFail(err);
   });
 }
@@ -963,7 +987,8 @@ function hostDrop(pid){
   addFeed(dispName(pid) + ' 퇴장');
   removeFighter(pid);
   delete conns[pid];
-  bc({ t:'leave', p:pid });
+  hostOrder = hostOrder.filter(function(p){ return p !== pid; });
+  bc({ t:'leave', p:pid, o: hostOrder });
   updateRoomChip(); updateScoreUI();
 }
 function takenList(){ return list().filter(function(f){ return f.ci != null; }).map(function(f){ return f.ci; }); }
@@ -981,8 +1006,9 @@ function onHostData(c, msg){
     var f = makeFighter(c.peer, nm, ci);
     f.inv = CFG.invuln;
     conns[c.peer] = c;
-    try { c.send({ t:'wel', you:c.peer, code:roomCode, ps: fullRoster() }); } catch(e){}
-    bc({ t:'join', p:c.peer, n:nm, ci:ci }, c.peer);
+    hostOrder.push(c.peer);
+    try { c.send({ t:'wel', you:c.peer, code:roomCode, ps: fullRoster(), o: hostOrder }); } catch(e){}
+    bc({ t:'join', p:c.peer, n:nm, ci:ci, o: hostOrder }, c.peer);
     addFeed('<b>' + esc(nm) + '</b> 참전!');
     updateRoomChip(); updateScoreUI();
   }
@@ -993,6 +1019,15 @@ function onHostData(c, msg){
     for (var i=0;i<q.length && i<6;i++){
       if (q[i] === 'h') tryHand(f); else if (q[i] === 'f') tryFoot(f);
     }
+  }
+  else if (msg.t === 'rejoin'){
+    var fR = fighters[c.peer];
+    if (!fR){ try{ c.send({ t:'lobby', taken: takenList(), n: list().length }); }catch(e){} return; }
+    conns[c.peer] = c;
+    if (hostOrder.indexOf(c.peer) < 0) hostOrder.push(c.peer);
+    try { c.send({ t:'wel', you:c.peer, code:roomCode, ps: fullRoster(), o: hostOrder }); } catch(e){}
+    addFeed(dispName(c.peer) + ' 재연결');
+    updateRoomChip();
   }
   else if (msg.t === 'probe'){
     if (Object.keys(conns).length >= 5){ try{ c.send({ t:'full' }); }catch(e){} return; }
@@ -1010,11 +1045,14 @@ function startJoin(code){
     hostConn = peer.connect('gbp-' + code, { serialization:'json', reliable:true });
     hostConn.on('open', function(){ try { hostConn.send({ t:'probe' }); } catch(e){} });
     hostConn.on('data', onClientData);
-    hostConn.on('close', function(){ if (started) hostLeft(); else netFail({ type:'peer-unavailable' }); });
-    hostConn.on('error', function(err){ netFail(err); });
+    hostConn.on('close', function(){ if (started) onHostLost(); else netFail({ type:'peer-unavailable' }); });
+    hostConn.on('error', function(err){ if (started) onHostLost(); else netFail(err); });
   });
   peer.on('disconnected', function(){ try { peer.reconnect(); } catch(e){} });
-  peer.on('error', function(err){ netFail(err); });
+  peer.on('error', function(err){
+    if (migrating && err && err.type === 'peer-unavailable') return;
+    netFail(err);
+  });
   joinTimeout = setTimeout(function(){ if (!started) netFail({ type:'timeout' }); }, 10000);
 }
 function sendHello(){
@@ -1024,16 +1062,23 @@ function onClientData(msg){
   if (!msg || typeof msg !== 'object') return;
   if (msg.t === 'wel'){
     clearTimeout(joinTimeout);
+    var wasReconnect = hostLostFlag;
+    migrating = false; hostLostFlag = false;
     myPid = msg.you;
+    ORDER = msg.o || ORDER;
+    var seen = {};
     for (var i=0;i<msg.ps.length;i++){
-      var d = msg.ps[i];
-      if (fighters[d.p]) continue;
-      var f = makeFighter(d.p, d.n, d.ci);
+      var d = msg.ps[i]; seen[d.p] = 1;
+      var f = fighters[d.p] || makeFighter(d.p, d.n, d.ci);
       f.pos.set(d.x, 0, d.z); f.nx = d.x; f.nz = d.z; f.hp = d.h; f.kills = d.k||0;
+      if (f.state === 'down' && f.hp > 0){ f.state = 'idle'; f.g.rotation.x = 0; }
     }
+    var gone = [];
+    for (var pid0 in fighters){ if (!seen[pid0]) gone.push(pid0); }
+    gone.forEach(removeFighter);
     enterGame();
     updateRoomChip();
-    addFeed('방 입장 — 코드 <b>' + roomCode + '</b>');
+    addFeed(wasReconnect ? '새 방장과 <b>재연결!</b>' : '방 입장 — 코드 <b>' + roomCode + '</b>');
   }
   else if (msg.t === 'lobby'){ clearTimeout(joinTimeout); showJoinPicker(msg.taken || [], msg.n, false); }
   else if (msg.t === 'charTaken'){ showJoinPicker(msg.taken || [], null, true); }
@@ -1041,12 +1086,14 @@ function onClientData(msg){
   else if (msg.t === 'join'){
     if (!fighters[msg.p]) makeFighter(msg.p, String(msg.n||'파이터').slice(0,8), msg.ci);
     fighters[msg.p].inv = CFG.invuln;
+    if (msg.o) ORDER = msg.o;
     addFeed('<b>' + dispName(msg.p) + '</b> 참전!');
     updateRoomChip(); updateScoreUI();
   }
   else if (msg.t === 'leave'){
     addFeed(dispName(msg.p) + ' 퇴장');
     removeFighter(msg.p);
+    ORDER = msg.o || ORDER.filter(function(p){ return p !== msg.p; });
     updateRoomChip(); updateScoreUI();
   }
   else if (msg.t === 'ev'){ onNetEvent(msg.v); }
@@ -1097,9 +1144,49 @@ function applySnap(fs){
     }
   }
 }
-function hostLeft(){
-  started = false;
-  showNetOv('<b>방장이 나가서 방이 종료됐어.</b><br>처음 화면으로 돌아가 다시 만들거나 참가해줘.', { home:true, spin:false });
+/* 방장 승계 — 방장이 나가면 가장 먼저 들어온 생존자가 같은 코드로 방을 이어받는다 */
+function onHostLost(){
+  if (hostLostFlag || MODE === 'host') return;
+  hostLostFlag = true;
+  var hostPid = ORDER[0];
+  if (hostPid && fighters[hostPid]){
+    addFeed(dispName(hostPid) + ' (방장) 퇴장');
+    removeFighter(hostPid);
+    updateScoreUI(); updateRoomChip();
+  }
+  var survivors = ORDER.slice(1).filter(function(p){ return !!fighters[p]; });
+  if (myPid && myPid === survivors[0]){
+    migrating = true;
+    showNetOv('방장 승계 중… 이제 <b>내가</b> 새 방장이 돼!', {});
+    MODE = 'host'; hostConn = null;
+    try { peer.destroy(); } catch(e){}
+    ORDER = survivors.slice();
+    setTimeout(function(){ claimHost(true, 0); }, 800);
+  } else {
+    migrating = true;
+    showNetOv('방장이 바뀌는 중… 잠시만 기다려줘!', {});
+    reconnectTry(0);
+  }
+}
+function reconnectTry(n){
+  if (!migrating || MODE === 'host') return;
+  if (n >= 14){
+    migrating = false; started = false;
+    showNetOv('<b>방이 종료됐어.</b><br>남은 사람이 없거나 승계에 실패했어 — 새로 만들어줘.', { home:true, spin:false });
+    return;
+  }
+  try {
+    var c = peer.connect('gbp-' + roomCode, { serialization:'json', reliable:true });
+    c.on('open', function(){
+      if (!migrating){ try { c.close(); } catch(e){} return; }
+      hostConn = c;
+      c.on('data', onClientData);
+      c.on('close', function(){ if (started) onHostLost(); });
+      c.on('error', function(){});
+      try { c.send({ t:'rejoin' }); } catch(e){}
+    });
+  } catch(e){}
+  setTimeout(function(){ reconnectTry(n + 1); }, 1600);
 }
 function netFail(err){
   clearTimeout(joinTimeout);
