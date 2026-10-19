@@ -661,11 +661,14 @@ function resolveHit(f){
   applyHit(f, tgt, atk);
 }
 function applyHit(from, tgt, atk){
+  var dmg = atk.dmg;
+  /* 방장 핸디캡 2: 방장이 주는 대미지 약 10% 감소 (손 6→5, 강타 10→9, 발 12→11) */
+  if (MODE === 'host' && from.pid === myPid && $('optHandi').checked) dmg = Math.max(1, Math.round(dmg * .9));
   var big = atk.dmg >= 10;
   var armored = tgt.armorT > 0;
-  tgt.hp = Math.max(0, tgt.hp - atk.dmg);
-  hitFx(from.pid, tgt, atk.dmg, big, armored);
-  netEvent({ e:'hit', by:from.pid, tg:tgt.pid, d:atk.dmg, b:big?1:0, ar:armored?1:0 });
+  tgt.hp = Math.max(0, tgt.hp - dmg);
+  hitFx(from.pid, tgt, dmg, big, armored);
+  netEvent({ e:'hit', by:from.pid, tg:tgt.pid, d:dmg, b:big?1:0, ar:armored?1:0 });
   var dir = tgt.pos.clone().sub(from.pos); dir.y = 0; dir.normalize();
   tgt.vel.add(dir.multiplyScalar(atk.kb));
   if (time - tgt.lastStag > 1.2) tgt.consec = 0;
@@ -760,6 +763,21 @@ function pumpHostAtk(){
     var it = hostAtkQ.shift(), f = me();
     if (!f) continue;
     if (it.k === 'h') tryHand(f); else tryFoot(f);
+  }
+}
+/* 참가자의 공격 명령이 호스트 쪽 이전 동작과 겹쳐 도착해도 씹히지 않게 잠깐 버퍼했다가 실행 */
+function tryClientAtk(f, k){
+  if (k === 'f' && time < f.footReady) return true; /* 쿨타임 중 → 소모 처리 */
+  if (!canAct(f)) return false;
+  if (k === 'h') tryHand(f); else tryFoot(f);
+  return true;
+}
+function pumpPendAtk(all){
+  for (var i=0;i<all.length;i++){
+    var f = all[i];
+    if (!f.pendAtk || f.pid === myPid) continue;
+    if (time > f.pendAtk.exp){ f.pendAtk = null; continue; }
+    if (tryClientAtk(f, f.pendAtk.k)) f.pendAtk = null;
   }
 }
 function recalcHostMeta(){
@@ -1057,7 +1075,8 @@ function onHostData(c, msg){
     f.input.x = +msg.x || 0; f.input.z = +msg.z || 0;
     var q = msg.a || [];
     for (var i=0;i<q.length && i<6;i++){
-      if (q[i] === 'h') tryHand(f); else if (q[i] === 'f') tryFoot(f);
+      if (q[i] !== 'h' && q[i] !== 'f') continue;
+      if (!tryClientAtk(f, q[i])) f.pendAtk = { k: q[i], exp: time + .35 };
     }
   }
   else if (msg.t === 'rejoin'){
@@ -1560,6 +1579,7 @@ function loop(){
       for (var k=0;k<all.length;k++) updateFighter(all[k], dt);
       if (MODE === 'host'){
         pumpHostAtk();
+        pumpPendAtk(all);
         sendAcc += realDt;
         if (sendAcc >= CFG.snapHz){
           sendAcc = 0;
