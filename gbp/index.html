@@ -241,11 +241,11 @@ input::placeholder{color:var(--quiet)}
   <button id="flipMode">가로/세로 전환</button>
   <button id="fsBtn">⛶ 전체화면 켜기/끄기</button>
   <button id="leaveBtn">나가기 (처음으로)</button>
-  <div class="keys">PC 조작 — 이동 <b>WASD/방향키</b> · 손 <b>J</b>(꾹) · 발 <b>K</b> · 기술 <b>U I O P</b></div>
+  <div class="keys">PC 조작 — 이동 <b>WASD/방향키</b> · 손 <b>J</b>(꾹=충전) · 발 <b>K</b> · 기술 <b>U I O P</b></div>
 </div>
 
 <div id="joyZone"></div>
-<button class="btn" id="bHand"><span class="lab bhs">손</span><span class="key">J · 꾹 연타</span><span class="cd" id="handCd"></span></button>
+<button class="btn" id="bHand"><span class="lab bhs">손</span><span class="key">J · 꾹 충전</span><span class="cd" id="handCd"></span></button>
 <button class="btn" id="bFoot"><span class="lab bhs">발</span><span class="key">K</span><span class="cd" id="footCd"></span></button>
 <button class="btn skill" id="s1"><span class="lab">①</span></button>
 <button class="btn skill" id="s2"><span class="lab">②</span></button>
@@ -269,7 +269,7 @@ input::placeholder{color:var(--quiet)}
     <button class="abtn" id="aHost"><span class="bhs">🛜 방 만들기</span><small>코드가 생성돼</small></button>
     <span class="joinBox"><input id="roomCode" maxlength="6" placeholder="방 코드"><button id="aJoin" class="bhs">참가</button></span>
   </div>
-  <div class="ctl">📱 왼쪽 드래그 이동 · <b>손</b> 꾹 연타 · <b>발</b> 넉백 &nbsp;|&nbsp; ⌨️ WASD + <b>J</b>/<b>K</b></div>
+  <div class="ctl">📱 왼쪽 드래그 이동 · <b>손</b> 꾹 충전 후 떼기 · <b>발</b> 넉백 &nbsp;|&nbsp; ⌨️ WASD + <b>J</b>/<b>K</b></div>
 </div>
 
 <div id="confirm">
@@ -307,7 +307,7 @@ var D2R = Math.PI/180;
 var CFG = {
   viewW: 26, fov: 50, pitch: 55*D2R,
   speed: 5, arenaR: 29, stadiumR: 10,
-  hand: { range: 1.8, arc: 80*D2R, dmg: [6,6,10], cd: .45 },
+  hand: { range: 1.8, arc: 80*D2R, cd: .45, chMax: 1, dmgMin: 6, dmgMax: 14 },
   foot: { range: 2.8, arc: 80*D2R, dmg: 12, cd: .75, kb: 7 },
   staggerT: .2, armorT: .5, hitstop: .05,
   respawn: 4, invuln: 2,
@@ -486,7 +486,7 @@ function makeFighter(pid, name, ci){
     pid:pid, name:name, ci:ci, g:g, torso:torso, head:head, lSh:lSh, rSh:rSh, lHip:lHip, rHip:rHip,
     mats:[mBody,mDark], plate:plate, bar:plate.querySelector('i'),
     pos:g.position, vel:new THREE.Vector3(), yaw:sp.yaw, hp:100, hpMax:100, kills:0,
-    state:'idle', st:0, atk:null, comboStep:0, comboExp:0, footReady:0, handReady:0,
+    state:'idle', st:0, atk:null, footReady:0, handReady:0, charging:false,
     flashT:0, inv:0, armorT:0, consec:0, lastStag:-9, downT:0, walkPhase:0,
     input:{x:0,z:0}, nx:sp.x, nz:sp.z, nyaw:sp.yaw, lastA:0,
     spawnPos:new THREE.Vector3(sp.x,0,sp.z), wanderTo:null, wanderWait:0
@@ -543,20 +543,20 @@ try { var sc = localStorage.getItem('gbp.char'); if (sc !== null && sc !== '') m
 function authMode(){ return MODE === 'practice' || MODE === 'host'; }
 
 /* ── 입력 ─────────────────────────────── */
-var keys = {}, handHeld = false;
+var keys = {};
 var moveIn = new THREE.Vector2();
 var atkQ = [];
 addEventListener('keydown', function(e){
   if (e.repeat) return;
   if (e.target && e.target.tagName === 'INPUT') return;
   var k = e.key.toLowerCase(); keys[k] = true;
-  if (k === 'j'){ handHeld = true; pressHand(); }
+  if (k === 'j') startHandCharge();
   if (k === 'k') pressFoot();
   if (k==='u'||k==='i'||k==='o'||k==='p') toast('기술 4종은 3단계에서 장착!');
 });
 addEventListener('keyup', function(e){
   if (e.target && e.target.tagName === 'INPUT') return;
-  var k = e.key.toLowerCase(); keys[k] = false; if (k==='j') handHeld = false;
+  var k = e.key.toLowerCase(); keys[k] = false; if (k==='j') releaseHandPunch();
 });
 addEventListener('contextmenu', function(e){ if (!(e.target && e.target.tagName==='INPUT')) e.preventDefault(); });
 
@@ -601,7 +601,7 @@ function bindBtn(id, down, up){
     el.addEventListener('pointercancel', up);
   }
 }
-bindBtn('bHand', function(){ handHeld = true; pressHand(); }, function(){ handHeld = false; });
+bindBtn('bHand', startHandCharge, releaseHandPunch);
 bindBtn('bFoot', pressFoot);
 ['s1','s2','s3','bUlt'].forEach(function(id){
   bindBtn(id, function(){ toast('기술 4종은 3단계에서 장착!'); });
@@ -622,18 +622,18 @@ function nearestEnemy(f, maxD){
 function canAct(f){ return f && (f.state === 'idle' || f.state === 'move'); }
 function normAng(a){ while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; }
 
-function tryHand(f){
+function tryHand(f, r){
   if (!canAct(f) || time < f.handReady) return;
+  r = Math.min(1, Math.max(0, r || 0));
   f.handReady = time + CFG.hand.cd;
-  if (f.comboExp < time) f.comboStep = 0;
-  var step = f.comboStep;
+  var heavy = r >= .8;
   startAttack(f, {
-    type:'hand', step:step,
-    dur: step===2 ? .42 : .30, hitAt: step===2 ? .15 : .11,
-    dmg: CFG.hand.dmg[step], range: CFG.hand.range,
-    kb: step===2 ? 3 : .6, lunge: step===2 ? 3.2 : 1.1
+    type:'hand', step: heavy ? 2 : 0,
+    dur: heavy ? .42 : .30, hitAt: heavy ? .15 : .11,
+    dmg: Math.round((CFG.hand.dmgMin + (CFG.hand.dmgMax - CFG.hand.dmgMin)*r)*10)/10,
+    range: CFG.hand.range + .6*r,
+    kb: .6 + 5.4*r, lunge: 1.1 + 2.1*r
   });
-  f.comboStep = (step+1)%3;
 }
 function tryFoot(f){
   if (!canAct(f) || time < f.footReady) return;
@@ -642,6 +642,7 @@ function tryFoot(f){
     dmg:CFG.foot.dmg, range:CFG.foot.range, kb:CFG.foot.kb, lunge:1.6 });
 }
 function startAttack(f, atk){
+  f.charging = false;
   f.state = 'attack'; f.st = 0; f.atk = atk; atk.done = false;
   var tgt = nearestEnemy(f, atk.range + 2.2);
   if (tgt){
@@ -720,22 +721,34 @@ function respawnFighter(f){
 function spawnFx(pid){ addFeed(dispName(pid)+' 리스폰 <b>(무적 2초)</b>'); }
 
 /* ── 로컬 입력 → 모드별 처리 ───────────── */
-function pressHand(){
-  if (!started) return;
-  var f = me(); if (!canAct(f) || time < f.handReady) return;
+/* 차지 펀치 — 누르면 충전 시작, 뗄 때 충전량만큼 강한 펀치 (탭=잽) */
+var charge = { on:false, t0:0 };
+function chargeRatio(){ return charge.on ? Math.min(1, (time - charge.t0) / CFG.hand.chMax) : 0; }
+function startHandCharge(){
+  if (!started || charge.on) return;
+  var f = me(); if (!f || f.state === 'down') return;
+  if (time < f.handReady) return;
+  charge.on = true; charge.t0 = time;
+  f.charging = true;
+}
+function releaseHandPunch(){
+  if (!charge.on) return;
+  var r = chargeRatio();
+  charge.on = false;
+  var f = me(); if (f) f.charging = false;
+  if (!started || !f || f.state === 'down') return;
   if (MODE === 'client'){
+    atkQ.push('h' + Math.round(r*9));
+    if (!canAct(f) || time < f.handReady) return; /* 모션 생략, 명령만 — 호스트 버퍼가 처리 */
     f.handReady = time + CFG.hand.cd;
-    if (f.comboExp < time) f.comboStep = 0;
-    var step = f.comboStep;
+    var heavy = r >= .8;
     f.state = 'attack'; f.st = 0;
-    f.atk = { type:'hand', step:step, dur: step===2?.42:.30, hitAt: step===2?.15:.11, done:true, cosmetic:true, kb:0 };
+    f.atk = { type:'hand', step: heavy?2:0, dur: heavy?.42:.30, hitAt: heavy?.15:.11, done:true, cosmetic:true, kb:0 };
     var tgt = nearestEnemy(f, CFG.hand.range + 2.2);
     if (tgt){ var d = tgt.pos.clone().sub(f.pos); f.yaw = Math.atan2(d.x, d.z); }
-    f.vel.add(facingVec(f).multiplyScalar(step===2?3.2:1.1));
-    f.comboStep = (step+1)%3;
-    atkQ.push('h');
-  } else if (MODE === 'host' && hostDelay > 0) queueHostAtk('h');
-  else tryHand(f);
+    f.vel.add(facingVec(f).multiplyScalar(heavy?3.2:1.1));
+  } else if (MODE === 'host' && hostDelay > 0) queueHostAtk('h', r);
+  else tryHand(f, r);
 }
 function pressFoot(){
   if (!started) return;
@@ -755,35 +768,30 @@ function pressFoot(){
 /* ── 방장 핸디캡 + 핑순 승계 ──
    참가자들이 보고한 핑의 중간값 절반(30~100ms)만큼 방장의 공격 입력을 늦게 반영해
    "방장 = 심판 폰" 이점을 상쇄. 승계 순서(hostOrder)도 핑 낮은 순으로 재정렬해 전파. */
-function queueHostAtk(k){
+function queueHostAtk(k, r){
   for (var i=0;i<hostAtkQ.length;i++) if (hostAtkQ[i].k === k) return;
-  hostAtkQ.push({ k:k, at: time + hostDelay });
+  hostAtkQ.push({ k:k, r:r||0, at: time + hostDelay });
 }
 function pumpHostAtk(){
   while (hostAtkQ.length && hostAtkQ[0].at <= time){
     var it = hostAtkQ.shift(), f = me();
     if (!f) continue;
-    if (it.k === 'h') tryHand(f); else tryFoot(f);
+    if (it.k === 'h') tryHand(f, it.r); else tryFoot(f);
   }
 }
 /* 참가자의 공격 명령이 호스트 쪽 이전 동작과 겹쳐 도착해도 씹히지 않게 잠깐 버퍼했다가 실행 */
-function tryClientAtk(f, k){
+function tryClientAtk(f, k, r){
   if (k === 'f' && time < f.footReady) return true; /* 쿨타임 중 → 소모 처리 */
-  if (k === 'h' && time < f.handReady) return true;
-  if (!canAct(f)) return false;
-  if (k === 'h') tryHand(f); else tryFoot(f);
+  if (!canAct(f) || (k === 'h' && time < f.handReady)) return false;
+  if (k === 'h') tryHand(f, r); else tryFoot(f);
   return true;
 }
 function pumpPendAtk(all){
   for (var i=0;i<all.length;i++){
     var f = all[i];
-    if (f.pid === myPid) continue;
-    if (f.pendAtk){
-      if (time > f.pendAtk.exp) f.pendAtk = null;
-      else if (tryClientAtk(f, f.pendAtk.k)) f.pendAtk = null;
-    }
-    /* 참가자 꾹 누르기: 호스트의 홀드 연타(매 프레임 체크)와 완전히 동일하게 동작 */
-    if (f.holdH && canAct(f)) tryHand(f);
+    if (f.pid === myPid || !f.pendAtk) continue;
+    if (time > f.pendAtk.exp){ f.pendAtk = null; continue; }
+    if (tryClientAtk(f, f.pendAtk.k, f.pendAtk.r)) f.pendAtk = null;
   }
 }
 function recalcHostMeta(){
@@ -827,7 +835,9 @@ function updateFighter(f, dt){
   f.flashT = Math.max(0, f.flashT - dt);
   f.inv = Math.max(0, f.inv - dt);
   f.armorT = Math.max(0, f.armorT - dt);
-  var em = f.flashT > 0 ? 0xff4433 : (f.armorT > 0 ? 0x2b3c6e : 0x000000);
+  var em = f.flashT > 0 ? 0xff4433
+    : (f.charging && f.state !== 'down' ? (Math.sin(time*14) > 0 ? 0x9a5f12 : 0x6b3f08)
+    : (f.armorT > 0 ? 0x2b3c6e : 0x000000));
   f.mats[0].emissive.setHex(em); f.mats[1].emissive.setHex(em);
   f.g.visible = !(f.inv > 0 && Math.sin(time*26) > .1);
 
@@ -855,7 +865,6 @@ function updateFighter(f, dt){
     animAttack(f, a, f.st);
     if (f.st >= a.dur){
       f.state = 'idle'; f.atk = null; poseReset(f);
-      f.comboExp = time + .55;
     }
   }
 
@@ -865,6 +874,7 @@ function updateFighter(f, dt){
     else if (f.pid === 'dummy'){ mv = dummyMove(f, dt); spd = CFG.speed * .26; }
     else { mv = new THREE.Vector3(f.input.x, 0, f.input.z); if (mv.lengthSq()>1) mv.normalize(); spd = CFG.speed; }
     spd *= (f.state === 'attack' ? .22 : 1);
+    if (f.charging) spd *= .6; /* 충전 중엔 이동 느려짐 */
     if (mv.lengthSq() > .001){
       f.pos.addScaledVector(mv, spd*dt);
       clampArena(f);
@@ -880,6 +890,9 @@ function updateFighter(f, dt){
   if (f.state === 'idle'){
     f.torso.position.y = 1.15 + Math.sin(time*2)*.02;
     f.lSh.rotation.x = f.rSh.rotation.x = .12;
+  }
+  if (f.charging && (f.state === 'idle' || f.state === 'move')){
+    f.rSh.rotation.x = 1.0; f.torso.rotation.y = -.3; /* 주먹 당겨 쥔 와인드업 */
   }
   f.g.position.copy(f.pos);
   f.g.rotation.y = f.yaw;
@@ -925,7 +938,9 @@ function animAttack(f, a, t){
 function clientUpdateRemote(f, dt){
   f.flashT = Math.max(0, f.flashT - dt);
   f.g.visible = !(f.inv > 0 && Math.sin(time*26) > .1);
-  var em = f.flashT > 0 ? 0xff4433 : (f.armorT > 0 ? 0x2b3c6e : 0x000000);
+  var em = f.flashT > 0 ? 0xff4433
+    : (f.charging && f.state !== 'down' ? (Math.sin(time*14) > 0 ? 0x9a5f12 : 0x6b3f08)
+    : (f.armorT > 0 ? 0x2b3c6e : 0x000000));
   f.mats[0].emissive.setHex(em); f.mats[1].emissive.setHex(em);
 
   var px = f.pos.x, pz = f.pos.z;
@@ -951,6 +966,7 @@ function clientUpdateRemote(f, dt){
       if (moved > dt*.6){ f.walkPhase += moved*2.4; animWalk(f); f.state='move'; }
       else { if (f.state==='move'){ f.state='idle'; poseReset(f); }
         f.torso.position.y = 1.15 + Math.sin(time*2)*.02; }
+      if (f.charging){ f.rSh.rotation.x = 1.0; f.torso.rotation.y = -.3; }
     }
   }
   f.g.position.copy(f.pos);
@@ -993,7 +1009,7 @@ function decodeAtk(a){
 function packF(f){
   return { p:f.pid, x:+f.pos.x.toFixed(2), z:+f.pos.z.toFixed(2), y:+f.yaw.toFixed(2),
            h:f.hp, k:f.kills, s:scode(f), a:acode(f), st:+f.st.toFixed(2),
-           i:f.inv>0?1:0, r:f.armorT>0?1:0 };
+           i:f.inv>0?1:0, r:f.armorT>0?1:0, c:f.charging?1:0 };
 }
 function fullRoster(){
   return list().map(function(f){
@@ -1079,12 +1095,15 @@ function onHostData(c, msg){
   else if (msg.t === 'in'){
     var f = fighters[c.peer]; if (!f) return;
     f.input.x = +msg.x || 0; f.input.z = +msg.z || 0;
-    f.holdH = !!msg.hd; /* 손 버튼을 누르고 있는 상태 — 호스트가 직접 연타를 돌려줌 */
+    f.charging = !!msg.hd; /* 차지 중 — 연출용 (실제 위력은 공격 명령에 실려 옴) */
     var q = msg.a || [];
     for (var i=0;i<q.length && i<6;i++){
-      if (q[i] !== 'h' && q[i] !== 'f') continue;
-      if (q[i] === 'h' && f.holdH) continue; /* 꾹 누르기 중엔 홀드 루프가 담당 */
-      if (!tryClientAtk(f, q[i])) f.pendAtk = { k: q[i], exp: time + .35 };
+      var cmd = String(q[i]);
+      if (cmd === 'f'){ if (!tryClientAtk(f, 'f', 0)) f.pendAtk = { k:'f', r:0, exp: time + .35 }; }
+      else if (cmd.charAt(0) === 'h'){
+        var cr = Math.min(1, Math.max(0, (+cmd.slice(1) || 0) / 9));
+        if (!tryClientAtk(f, 'h', cr)) f.pendAtk = { k:'h', r:cr, exp: time + .35 };
+      }
     }
   }
   else if (msg.t === 'rejoin'){
@@ -1207,6 +1226,7 @@ function applySnap(fs){
       if (d.s === 2 && f.state !== 'stagger' && f.state !== 'down'){ f.state='stagger'; f.st=d.st; f.atk=null; }
     } else {
       f.nx = d.x; f.nz = d.z; f.nyaw = d.y;
+      f.charging = !!d.c;
       if (d.s === 3){ if (f.state!=='down'){ f.state='down'; f.downT=0; f.atk=null; } }
       else if (d.s === 2){ if (f.state!=='stagger'){ f.state='stagger'; f.st=d.st; f.atk=null; } }
       else if (d.a > 0){
@@ -1575,7 +1595,7 @@ function loop(){
       if (inAcc >= CFG.inHz && hostConn && hostConn.open){
         inAcc = 0;
         var mv = moveVecFromInput();
-        try { hostConn.send({ t:'in', x:+mv.x.toFixed(2), z:+mv.z.toFixed(2), a: atkQ, hd: handHeld ? 1 : 0 }); } catch(e){}
+        try { hostConn.send({ t:'in', x:+mv.x.toFixed(2), z:+mv.z.toFixed(2), a: atkQ, hd: charge.on ? 1 : 0 }); } catch(e){}
         atkQ = [];
       }
       pingAcc += realDt;
@@ -1597,7 +1617,6 @@ function loop(){
         if (metaAcc >= 2.5){ metaAcc = 0; recalcHostMeta(); }
       }
     }
-    if (handHeld && canAct(me())) pressHand();
   }
   if (comboExpG <= time && comboN > 0){ comboN = 0; comboEl.classList.remove('pop'); comboEl.style.opacity = 0; }
   var f0 = me();
@@ -1605,10 +1624,15 @@ function loop(){
   footCd.style.background = cd > 0
     ? 'conic-gradient(rgba(0,0,0,.6) ' + (cd*360) + 'deg, transparent 0)'
     : 'none';
-  var cdh = f0 ? Math.max(0, f0.handReady - time) / CFG.hand.cd : 0;
-  handCd.style.background = cdh > 0
-    ? 'conic-gradient(rgba(0,0,0,.6) ' + (cdh*360) + 'deg, transparent 0)'
-    : 'none';
+  if (charge.on){
+    var chR = chargeRatio();
+    handCd.style.background = 'conic-gradient(rgba(255,180,84,' + (chR >= 1 ? '.95' : '.7') + ') ' + (chR*360) + 'deg, rgba(0,0,0,.35) 0)';
+  } else {
+    var cdh = f0 ? Math.max(0, f0.handReady - time) / CFG.hand.cd : 0;
+    handCd.style.background = cdh > 0
+      ? 'conic-gradient(rgba(0,0,0,.6) ' + (cdh*360) + 'deg, transparent 0)'
+      : 'none';
+  }
 
   updateCamera(dt, realDt);
   updateOverlays(realDt);
