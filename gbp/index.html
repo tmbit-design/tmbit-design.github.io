@@ -775,9 +775,13 @@ function tryClientAtk(f, k){
 function pumpPendAtk(all){
   for (var i=0;i<all.length;i++){
     var f = all[i];
-    if (!f.pendAtk || f.pid === myPid) continue;
-    if (time > f.pendAtk.exp){ f.pendAtk = null; continue; }
-    if (tryClientAtk(f, f.pendAtk.k)) f.pendAtk = null;
+    if (f.pid === myPid) continue;
+    if (f.pendAtk){
+      if (time > f.pendAtk.exp) f.pendAtk = null;
+      else if (tryClientAtk(f, f.pendAtk.k)) f.pendAtk = null;
+    }
+    /* 참가자 꾹 누르기: 호스트의 홀드 연타(매 프레임 체크)와 완전히 동일하게 동작 */
+    if (f.holdH && canAct(f)) tryHand(f);
   }
 }
 function recalcHostMeta(){
@@ -1073,9 +1077,11 @@ function onHostData(c, msg){
   else if (msg.t === 'in'){
     var f = fighters[c.peer]; if (!f) return;
     f.input.x = +msg.x || 0; f.input.z = +msg.z || 0;
+    f.holdH = !!msg.hd; /* 손 버튼을 누르고 있는 상태 — 호스트가 직접 연타를 돌려줌 */
     var q = msg.a || [];
     for (var i=0;i<q.length && i<6;i++){
       if (q[i] !== 'h' && q[i] !== 'f') continue;
+      if (q[i] === 'h' && f.holdH) continue; /* 꾹 누르기 중엔 홀드 루프가 담당 */
       if (!tryClientAtk(f, q[i])) f.pendAtk = { k: q[i], exp: time + .35 };
     }
   }
@@ -1567,7 +1573,7 @@ function loop(){
       if (inAcc >= CFG.inHz && hostConn && hostConn.open){
         inAcc = 0;
         var mv = moveVecFromInput();
-        try { hostConn.send({ t:'in', x:+mv.x.toFixed(2), z:+mv.z.toFixed(2), a: atkQ }); } catch(e){}
+        try { hostConn.send({ t:'in', x:+mv.x.toFixed(2), z:+mv.z.toFixed(2), a: atkQ, hd: handHeld ? 1 : 0 }); } catch(e){}
         atkQ = [];
       }
       pingAcc += realDt;
