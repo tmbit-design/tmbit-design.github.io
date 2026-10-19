@@ -260,7 +260,7 @@ input::placeholder{color:var(--quiet)}
 <div id="joyZone"></div>
 <button class="btn" id="bHand"><span class="lab bhs">손</span><span class="key">J · 꾹 충전</span><span class="cd" id="handCd"></span></button>
 <button class="btn" id="bFoot"><span class="lab bhs">발</span><span class="key">K</span><span class="cd" id="footCd"></span></button>
-<button class="btn" id="bDash"><span class="lab bhs">대시</span><span class="key">Space</span><span class="cd" id="dashCd"></span></button>
+<button class="btn" id="bDash"><span class="lab bhs">대시</span><span class="key" id="dashKey">●● · Space</span><span class="cd" id="dashCd"></span></button>
 <button class="btn skill" id="s1"><span class="lab bhs">①</span><span class="cd"></span></button>
 <button class="btn skill" id="s2"><span class="lab bhs">②</span><span class="cd"></span></button>
 <button class="btn skill" id="s3"><span class="lab bhs">③</span><span class="cd"></span></button>
@@ -593,7 +593,7 @@ function makeFighter(pid, name, ci){
     state:'idle', st:0, atk:null, footReady:0, handReady:0, charging:false,
     flashT:0, inv:0, armorT:0, consec:0, lastStag:-9, downT:0, walkPhase:0,
     slowT:0, slowPct:0, spdT:0, spdPct:0, hasteT:0, atkLockT:0, parryT:0, reflectT:0,
-    stunT:0, castT:0, dotT:0, dotAcc:0, dotPs:0, dotBy:null, skCd:[0,0,0,0], lastCombat:-9, zoneAcc:0, dashReady:0,
+    stunT:0, castT:0, dotT:0, dotAcc:0, dotPs:0, dotBy:null, skCd:[0,0,0,0], lastCombat:-9, zoneAcc:0, dashChg:2, dashRe:0,
     input:{x:0,z:0}, nx:sp.x, nz:sp.z, nyaw:sp.yaw, lastA:0,
     spawnPos:new THREE.Vector3(sp.x,0,sp.z), wanderTo:null, wanderWait:0
   };
@@ -610,7 +610,8 @@ function me(){ return fighters[myPid]; }
 /* ── HUD 참조/유틸 ─────────────────────── */
 var $ = function(id){ return document.getElementById(id); };
 var feed = $('feed'), comboEl = $('combo'), banner = $('banner'),
-    toastEl = $('toast'), footCd = $('footCd'), handCd = $('handCd'), dashCd = $('dashCd'), fpsEl = $('fps');
+    toastEl = $('toast'), footCd = $('footCd'), handCd = $('handCd'), dashCd = $('dashCd'),
+    dashKey = $('dashKey'), fpsEl = $('fps');
 function addFeed(html){
   var d = document.createElement('div'); d.className = 'line'; d.innerHTML = html;
   feed.prepend(d);
@@ -842,7 +843,7 @@ function respawnFighter(f){
   f.state = 'idle'; f.inv = CFG.invuln;
   f.g.rotation.x = 0; f.consec = 0; f.armorT = 0; f.wanderTo = null;
   f.slowT = 0; f.spdT = 0; f.hasteT = 0; f.atkLockT = 0; f.parryT = 0; f.reflectT = 0;
-  f.stunT = 0; f.castT = 0; f.dotT = 0; f.dotAcc = 0; f.lastCombat = -9;
+  f.stunT = 0; f.castT = 0; f.dotT = 0; f.dotAcc = 0; f.lastCombat = -9; f.dashChg = 2;
   spawnFx(f.pid);
   netEvent({ e:'sp', p:f.pid });
 }
@@ -891,10 +892,22 @@ function pressFoot(){
   } else tryFoot(f);
 }
 
-/* 공용 대시 — 이동(스틱) 방향으로 4m 순간 가속, 쿨 2초, 무적 없음 */
+/* 공용 대시 — 스택 2개, 각 2초 재충전. 이동(스틱) 방향으로 4m 순간 가속, 무적 없음 */
+function updDash(f){
+  if (f.dashChg >= 2) return;
+  if (time >= f.dashRe){
+    f.dashChg++;
+    if (f.dashChg < 2) f.dashRe = time + CFG.dash.cd;
+  }
+}
+function spendDash(f){
+  if (f.dashChg === 2) f.dashRe = time + CFG.dash.cd; /* 가득 찼었다면 재충전 시작 */
+  f.dashChg--;
+}
 function tryDash(f){
-  if (!canAct(f) || time < f.dashReady) return;
-  f.dashReady = time + CFG.dash.cd;
+  updDash(f);
+  if (!canAct(f) || f.dashChg <= 0) return;
+  spendDash(f);
   var mv = (f.pid === myPid) ? moveVecFromInput() : new THREE.Vector3(f.input.x, 0, f.input.z);
   if (mv.lengthSq() < .04) mv = facingVec(f); else mv.normalize();
   f.vel.add(mv.clone().multiplyScalar(CFG.dash.dist * 6));
@@ -904,12 +917,14 @@ function tryDash(f){
 }
 function pressDash(){
   if (!started) return;
-  var f = me(); if (!f || !canAct(f) || time < f.dashReady) return;
+  var f = me(); if (!f) return;
+  updDash(f);
+  if (!canAct(f) || f.dashChg <= 0) return;
   if (MODE === 'client'){
-    f.dashReady = time + CFG.dash.cd;
+    spendDash(f); /* 로컬 예측 */
     var mv = moveVecFromInput();
     if (mv.lengthSq() < .04) mv = facingVec(f); else mv.normalize();
-    f.vel.add(mv.clone().multiplyScalar(CFG.dash.dist * 6)); /* 로컬 예측 */
+    f.vel.add(mv.clone().multiplyScalar(CFG.dash.dist * 6));
     f.yaw = Math.atan2(mv.x, mv.z);
     mkRing(f.pos.x, f.pos.z, .9, 0x9fd8ff, .3, true);
     atkQ.push('d');
@@ -1447,6 +1462,7 @@ function updateFighter(f, dt){
   f.hasteT = Math.max(0, f.hasteT - dt); f.atkLockT = Math.max(0, f.atkLockT - dt);
   f.parryT = Math.max(0, f.parryT - dt); f.reflectT = Math.max(0, f.reflectT - dt);
   f.castT = Math.max(0, f.castT - dt);
+  updDash(f);
   if (f.stunT > 0){
     f.stunT = Math.max(0, f.stunT - dt);
     if (f.state === 'attack'){ f.state = 'idle'; f.atk = null; poseReset(f); }
@@ -2288,10 +2304,13 @@ function loop(){
       ? 'conic-gradient(rgba(0,0,0,.6) ' + (cdh*360) + 'deg, transparent 0)'
       : 'none';
   }
-  var cdd = f0 ? Math.max(0, f0.dashReady - time) / CFG.dash.cd : 0;
-  dashCd.style.background = cdd > 0
-    ? 'conic-gradient(rgba(0,0,0,.6) ' + (cdd*360) + 'deg, transparent 0)'
-    : 'none';
+  if (f0){
+    var dfrac = (f0.dashChg >= 2) ? 0 : Math.min(1, Math.max(0, (f0.dashRe - time) / CFG.dash.cd));
+    dashCd.style.background = (f0.dashChg <= 0)
+      ? 'conic-gradient(rgba(0,0,0,.72) ' + (dfrac*360) + 'deg, rgba(0,0,0,.45) 0)'
+      : (dfrac > 0 ? 'conic-gradient(rgba(0,0,0,.4) ' + (dfrac*360) + 'deg, transparent 0)' : 'none');
+    dashKey.textContent = (f0.dashChg >= 2 ? '●●' : f0.dashChg === 1 ? '●○' : '○○') + ' · Space';
+  } else dashCd.style.background = 'none';
   updateSkillHud(f0, realDt);
 
   updateCamera(dt, realDt);
