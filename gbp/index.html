@@ -236,7 +236,6 @@ input::placeholder{color:var(--quiet)}
   <label>더미 이동 <input id="optMove" type="checkbox" checked></label>
   <label>히트스톱 <input id="optStop" type="checkbox" checked></label>
   <label>화면 흔들림 <input id="optShake" type="checkbox" checked></label>
-  <label>방장 핸디캡 <input id="optHandi" type="checkbox" checked></label>
   <div class="row"><span>FPS</span><span id="fps">—</span></div>
   <button id="resetDummy">더미 즉시 리젠</button>
   <button id="flipMode">가로/세로 전환</button>
@@ -664,7 +663,7 @@ function resolveHit(f){
 function applyHit(from, tgt, atk){
   var dmg = atk.dmg;
   /* 방장 핸디캡 2: 방장이 주는 대미지 20% 감소 (손 6→4.8, 강타 10→8, 발 12→9.6) — 반올림하면 잽이 안 깎여서 소수점 유지 */
-  if (MODE === 'host' && from.pid === myPid && $('optHandi').checked) dmg = Math.max(1, Math.round(dmg * .8 * 10) / 10);
+  if (MODE === 'host' && from.pid === myPid) dmg = Math.max(1, Math.round(dmg * .8 * 10) / 10);
   var big = atk.dmg >= 10;
   var armored = tgt.armorT > 0;
   tgt.hp = Math.max(0, tgt.hp - dmg);
@@ -788,9 +787,9 @@ function pumpPendAtk(all){
   }
 }
 function recalcHostMeta(){
-  var on = $('optHandi').checked, rtts = [], pid;
+  var rtts = [], pid;
   for (pid in conns){ var fr = fighters[pid]; if (fr && fr.rtt != null) rtts.push(fr.rtt); }
-  if (!on || !Object.keys(conns).length) hostDelay = 0;
+  if (!Object.keys(conns).length) hostDelay = 0;
   else if (!rtts.length) hostDelay = .03;
   else {
     rtts.sort(function(a,b){ return a-b; });
