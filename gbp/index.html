@@ -36,6 +36,7 @@ body{margin:0;background:var(--sky);color:var(--ink);
 input{font:inherit;color:var(--ink);background:rgba(255,255,255,.08);border:1px solid var(--btn-brd);
   border-radius:10px;padding:9px 12px;touch-action:auto;-webkit-user-select:text;user-select:text;text-align:center}
 input::placeholder{color:var(--quiet)}
+[hidden]{display:none!important}
 #app{position:fixed;inset:0;width:100%;height:100%;transform-origin:0 0}
 /* 강제 가로: 물리 safe-area를 논리 방향으로 재매핑 */
 #app.rot{--sl:env(safe-area-inset-top,0px);--sr:env(safe-area-inset-bottom,0px);
@@ -212,6 +213,8 @@ input::placeholder{color:var(--quiet)}
 @keyframes spin{to{transform:rotate(360deg)}}
 #netOv .chrs{margin-top:2px}
 #netOv .home{font:inherit;background:var(--btn);border:1px solid var(--btn-brd);border-radius:10px;color:var(--ink);padding:9px 20px;font-size:14px;cursor:pointer}
+#netOv .go2{font:inherit;background:var(--accent);border:0;border-radius:10px;color:#1c2130;padding:10px 24px;font-size:16px;cursor:pointer}
+#netOv .go2:disabled{opacity:.4;cursor:default}
 @media (prefers-reduced-motion:reduce){ #feed .line{animation:none} #netOv .spin{animation-duration:2s} }
 </style>
 </head>
@@ -286,6 +289,7 @@ input::placeholder{color:var(--quiet)}
     <div class="spin" id="netSpin"></div>
     <div class="msg" id="netMsg"></div>
     <div class="chrs" id="netChars" hidden></div>
+    <button class="go2 bhs" id="netGo" hidden>이 캐릭터로 입장</button>
     <button class="home" id="netHome" hidden>처음으로</button>
   </div>
 </div>
@@ -982,6 +986,10 @@ function onHostData(c, msg){
       if (q[i] === 'h') tryHand(f); else if (q[i] === 'f') tryFoot(f);
     }
   }
+  else if (msg.t === 'probe'){
+    if (Object.keys(conns).length >= 5){ try{ c.send({ t:'full' }); }catch(e){} return; }
+    try{ c.send({ t:'lobby', taken: takenList(), n: list().length }); }catch(e){}
+  }
   else if (msg.t === 'ping'){ try{ c.send({ t:'pong', c: msg.c }); }catch(e){} }
 }
 
@@ -992,7 +1000,7 @@ function startJoin(code){
   peer = new Peer({ debug: 0 });
   peer.on('open', function(){
     hostConn = peer.connect('gbp-' + code, { serialization:'json', reliable:true });
-    hostConn.on('open', function(){ sendHello(); });
+    hostConn.on('open', function(){ try { hostConn.send({ t:'probe' }); } catch(e){} });
     hostConn.on('data', onClientData);
     hostConn.on('close', function(){ if (started) hostLeft(); else netFail({ type:'peer-unavailable' }); });
     hostConn.on('error', function(err){ netFail(err); });
@@ -1018,7 +1026,8 @@ function onClientData(msg){
     updateRoomChip();
     addFeed('방 입장 — 코드 <b>' + roomCode + '</b>');
   }
-  else if (msg.t === 'charTaken'){ showCharReselect(msg.taken || []); }
+  else if (msg.t === 'lobby'){ clearTimeout(joinTimeout); showJoinPicker(msg.taken || [], msg.n, false); }
+  else if (msg.t === 'charTaken'){ showJoinPicker(msg.taken || [], null, true); }
   else if (msg.t === 'full'){ netFail({ type:'full' }); }
   else if (msg.t === 'join'){
     if (!fighters[msg.p]) makeFighter(msg.p, String(msg.n||'파이터').slice(0,8), msg.ci);
@@ -1140,27 +1149,37 @@ function showNetOv(html, opt){
 }
 function hideNetOv(){ $('netOv').classList.remove('show'); }
 $('netHome').addEventListener('click', function(){ location.reload(); });
-function showCharReselect(taken){
-  $('netMsg').innerHTML = '<b>' + (myCi!=null?CHARS[myCi].nm:'그 캐릭터') + '</b>는 이미 사용 중!<br>다른 캐릭터를 골라줘.';
+var joinCi = null;
+function showJoinPicker(taken, count, conflict){
+  joinCi = (myCi != null && taken.indexOf(myCi) < 0) ? myCi : null;
+  $('netMsg').innerHTML = conflict
+    ? '앗, 방금 선택이 겹쳤어! 사용 중인 캐릭터는 <b>회색</b>이야 — 다른 캐릭터로 입장해줘.'
+    : '방 <b>' + roomCode + '</b>' + (count ? ' · 현재 ' + count + '명' : '') +
+      '<br>캐릭터를 확인하고 입장! <small>(회색 = 사용 중)</small>';
   $('netSpin').hidden = true; $('netHome').hidden = true;
   var box = $('netChars'); box.hidden = false;
-  renderChars(box, taken, function(ci){
-    myCi = ci;
-    try { localStorage.setItem('gbp.char', String(ci)); } catch(e){}
-    $('netMsg').innerHTML = '연결 중…'; $('netSpin').hidden = false; box.hidden = true;
-    sendHello();
-  });
+  renderChars(box, taken, joinCi, function(ci){ joinCi = ci; $('netGo').disabled = false; });
+  var go = $('netGo'); go.hidden = false; go.disabled = (joinCi == null);
   $('netOv').classList.add('show');
 }
+$('netGo').addEventListener('click', function(){
+  if (joinCi == null) return;
+  myCi = joinCi;
+  try { localStorage.setItem('gbp.char', String(myCi)); } catch(e){}
+  $('netMsg').innerHTML = '입장 중…';
+  $('netSpin').hidden = false; $('netChars').hidden = true; $('netGo').hidden = true;
+  sendHello();
+});
 
 /* ── 타이틀/로비 ───────────────────────── */
-function renderChars(container, taken, onPick){
+function renderChars(container, taken, selectedCi, onPick){
   container.innerHTML = '';
   CHARS.forEach(function(c, i){
+    var locked = !!(taken && taken.indexOf(i) >= 0);
     var b = document.createElement('button');
-    b.className = 'chr' + (i===myCi?' on':'') + (taken && taken.indexOf(i)>=0 ? ' lock':'');
+    b.className = 'chr' + (!locked && i===selectedCi ? ' on':'') + (locked ? ' lock':'');
     b.innerHTML = '<span class="dot" style="background:'+cssHex(c.acc)+'"></span>' +
-      '<span class="nm bhs">'+c.nm+'</span><small>' + (taken && taken.indexOf(i)>=0 ? '사용 중' : c.zone) + '</small>';
+      '<span class="nm bhs">'+c.nm+'</span><small>' + (locked ? '사용 중' : c.zone) + '</small>';
     b.addEventListener('click', function(){
       container.querySelectorAll('.chr').forEach(function(x){ x.classList.remove('on'); });
       b.classList.add('on');
@@ -1169,7 +1188,7 @@ function renderChars(container, taken, onPick){
     container.appendChild(b);
   });
 }
-renderChars($('charGrid'), null, function(ci){
+renderChars($('charGrid'), null, myCi, function(ci){
   myCi = ci;
   try { localStorage.setItem('gbp.char', String(ci)); } catch(e){}
 });
