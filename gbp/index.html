@@ -99,6 +99,10 @@ input::placeholder{color:var(--quiet)}
   font-size:11.5px;color:var(--quiet)}
 #zoneTag b{color:var(--accent)}
 #flashFx{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:15;transition:opacity .5s}
+#quote{position:fixed;left:50%;top:37%;transform:translate(-50%,-50%) scale(.92);z-index:22;
+  font-size:21px;color:var(--accent);text-shadow:0 2px 12px rgba(0,0,0,.75);opacity:0;
+  pointer-events:none;transition:opacity .22s, transform .22s;text-align:center;max-width:84vw}
+#quote.pop{opacity:1;transform:translate(-50%,-50%) scale(1)}
 #bHand{width:112px;height:112px;right:calc(14px + var(--sr));bottom:calc(12px + var(--sb))}
 #bHand .lab{font-size:27px}
 #bFoot{width:86px;height:86px;right:calc(134px + var(--sr));bottom:calc(4px + var(--sb))}
@@ -249,6 +253,7 @@ input::placeholder{color:var(--quiet)}
   <label>더미 이동 <input id="optMove" type="checkbox" checked></label>
   <label>히트스톱 <input id="optStop" type="checkbox" checked></label>
   <label>화면 흔들림 <input id="optShake" type="checkbox" checked></label>
+  <label>사운드 <input id="optSnd" type="checkbox" checked></label>
   <div class="row"><span>FPS</span><span id="fps">—</span></div>
   <button id="resetDummy">더미 즉시 리젠</button>
   <button id="flipMode">가로/세로 전환</button>
@@ -268,6 +273,7 @@ input::placeholder{color:var(--quiet)}
 
 <div id="combo" class="bhs"></div>
 <div id="banner" class="bhs">K.O!</div>
+<div id="quote" class="bhs"></div>
 <div id="toast"></div>
 
 <div id="board"><div class="card"><h3 class="bhs">점수판</h3><div id="boardRows"></div></div></div>
@@ -507,6 +513,57 @@ rimTop.rotation.x = -Math.PI/2; rimTop.position.y = .43; scene.add(rimTop);
 var wall = new THREE.Mesh(new THREE.CylinderGeometry(29.8, 29.8, .5, 96, 1, true),
   new THREE.MeshLambertMaterial({ color: 0x343b4d, side: THREE.DoubleSide }));
 wall.position.y = .25; scene.add(wall);
+
+/* ── 4단계: 구역 소품 (장식 전용 — 충돌 없음, 외곽 띠 배치) ── */
+(function buildProps(){
+  var MATS = {};
+  function pm(c){ if (!MATS[c]) MATS[c] = new THREE.MeshLambertMaterial({ color: c }); return MATS[c]; }
+  function pmE(c, e){ var m = new THREE.MeshLambertMaterial({ color: c }); m.emissive = new THREE.Color(e); return m; }
+  function G(aDeg, r, parts){
+    var g = new THREE.Group();
+    parts.forEach(function(p){ g.add(p); });
+    var a = aDeg * D2R;
+    g.position.set(r*Math.cos(a), 0, -r*Math.sin(a));
+    g.rotation.y = a + Math.PI/2;
+    scene.add(g);
+  }
+  function B(w,h,d,c,x,y,z){ var m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), pm(c)); m.position.set(x||0, y!=null?y:h/2, z||0); return m; }
+  function C(r1,r2,h,c,x,y,z){ var m = new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,10), pm(c)); m.position.set(x||0, y!=null?y:h/2, z||0); return m; }
+  function S(r,c,x,y,z){ var m = new THREE.Mesh(new THREE.SphereGeometry(r,10,8), pm(c)); m.position.set(x||0, y!=null?y:r, z||0); return m; }
+  function NB(w,h,d,c,e,x,y,z){ var m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), pmE(c,e)); m.position.set(x||0, y!=null?y:h/2, z||0); return m; }
+  /* 실버타운(90°): 벤치 · 나무 · 경로당 확성기 */
+  G(78, 26, [ B(1.8,.35,.6,0x7a5a3a,0,.55), B(1.8,.5,.12,0x7a5a3a,0,.95,-.26), C(.1,.1,.5,0x5a4a3a,-.7,.25), C(.1,.1,.5,0x5a4a3a,.7,.25) ]);
+  G(90, 27.5, [ C(.18,.22,1.6,0x6b4a2a), S(1.1,0x4f8f63,0,2.2) ]);
+  G(102, 26, [ C(.08,.1,2.4,0x8a8a8a), NB(.5,.4,.4,0x999999,0x333322,0,2.5) ]);
+  /* 멕시코 다운타운(150°): 선인장 · 가게 */
+  G(140, 26.5, [ C(.3,.35,1.8,0x3f8f4f), C(.14,.16,.8,0x3f8f4f,-.5,1.5), C(.14,.16,.8,0x3f8f4f,.5,1.3) ]);
+  G(158, 27, [ C(.26,.3,1.4,0x3f8f4f) ]);
+  G(150, 27.8, [ B(2.6,1.6,1.6,0xc98a4e), B(2.9,.2,1.9,0xa05fc0,0,1.7), NB(1.2,.35,.1,0xd04a2a,0x551111,0,1.1,.86) ]);
+  /* 라스베가스(210°): 네온 사인 · 슬롯머신 · 황금별 기둥 */
+  G(200, 26, [ C(.1,.12,2.6,0x555566), NB(.9,1.2,.2,0x222230,0xd0408a,0,2.2) ]);
+  G(216, 26.8, [ B(.9,1.3,.7,0x3a3f55), NB(.7,.4,.05,0x111118,0x30c0d0,0,1,.38) ]);
+  G(210, 28.2, [ C(.11,.11,3,0x44444c), S(.5,0xffd700,0,3.3) ]);
+  /* 일본 풍속점 거리(270°): 홍등 셋 · 네온 간판 */
+  [258, 270, 282].forEach(function(a2, i2){
+    var lan = new THREE.Mesh(new THREE.SphereGeometry(.34,10,8), pmE(0xd04a2a, 0x7a1a10));
+    lan.position.y = 2.1; lan.scale.y = 1.25;
+    G(a2, 26.3 + (i2%2)*.9, [ C(.06,.07,2.1,0x4a3a30), lan ]);
+  });
+  G(270, 28.3, [ NB(1.8,1,.15,0x1a1420,0xd0308a,0,1.8), C(.09,.1,1.3,0x44444c,-.75), C(.09,.1,1.3,0x44444c,.75) ]);
+  /* 늪지대(330°): 바위 · 갈대 · 웅덩이 */
+  (function(){ var rock = new THREE.Mesh(new THREE.SphereGeometry(.9,7,6), pm(0x6e6a60)); rock.position.y=.4; rock.scale.y=.6; G(320, 26.5, [rock]); })();
+  G(338, 27, [ C(.04,.05,1.4,0x5f8f4a,-.3), C(.04,.05,1.7,0x5f8f4a,0,null,.2), C(.04,.05,1.2,0x5f8f4a,.3) ]);
+  (function(){
+    var p = new THREE.Mesh(new THREE.CircleGeometry(1.6, 18), pm(0x2e4a44));
+    p.rotation.x = -Math.PI/2; var a = 330*D2R;
+    p.position.set(24.5*Math.cos(a), .05, -24.5*Math.sin(a));
+    scene.add(p);
+  })();
+  /* 여의도 증권시장(30°): 빌딩 둘 · 상한가 전광판 */
+  G(22, 27, [ B(1.3,3.2,1.3,0x4a5468), NB(1.1,2.6,.05,0x222230,0x253a55,0,1.7,.67) ]);
+  G(40, 27.5, [ B(1.1,2.4,1.1,0x555f72) ]);
+  G(30, 25.8, [ C(.09,.1,1.9,0x555566), NB(1.5,.8,.12,0x111118,0xa01818,0,2.2) ]);
+})();
 
 var lockRing = new THREE.Mesh(new THREE.RingGeometry(.55, .72, 32),
   new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: .85 }));
@@ -775,6 +832,7 @@ function applyHit(from, tgt, atk){
   /* 노인네 패링: 받는 공격 무효 + 공격자 2초 스턴 + 반격 15 */
   if (tgt.parryT > 0 && atk.type !== 'counter' && from !== tgt){
     tgt.parryT = 0;
+    sfx('parry');
     spawnDmg(tgt.pos, 'PARRY!', 'info');
     applyStun(from, 2);
     netEvent({ e:'st', tg:from.pid, k:'stun', t:2 });
@@ -813,6 +871,7 @@ function koBy(from, tgt){
   netEvent({ e:'ko', by:from.pid, tg:tgt.pid, k:from.kills, aw:away });
 }
 function hitFx(byPid, tgt, dmg, big, armored){
+  sfx(big ? 'big' : 'hit');
   tgt.flashT = .14;
   spawnDmg(tgt.pos, dmg, big ? 'big' : '');
   if (armored) spawnDmg(tgt.pos, 'ARMOR', 'info');
@@ -832,6 +891,9 @@ function hitFx(byPid, tgt, dmg, big, armored){
   }
 }
 function koFx(byPid, tgPid, away){
+  sfx('ko');
+  var kf = fighters[byPid];
+  if (kf && kf.ci != null) showQuote('“' + KOLINES[kf.ci][Math.floor(Math.random()*KOLINES[kf.ci].length)] + '”');
   banner.classList.remove('show'); void banner.offsetWidth; banner.classList.add('show');
   addFeed('<b>'+dispName(byPid)+'</b> ▶ '+dispName(tgPid)+' <b>KO!</b>' + (away ? ' <b style="color:#ffb454">원정 +2</b>' : ''));
   if ((byPid === myPid || tgPid === myPid) && $('optShake').checked) shakeAmp = 1.3;
@@ -857,7 +919,7 @@ function startHandCharge(){
   if (!started || charge.on) return;
   var f = me(); if (!f || f.state === 'down') return;
   if (time < f.handReady) return;
-  charge.on = true; charge.t0 = time;
+  charge.on = true; charge.t0 = time; charge.pinged = false;
   f.charging = true;
 }
 function releaseHandPunch(){
@@ -908,6 +970,7 @@ function tryDash(f){
   updDash(f);
   if (!canAct(f) || f.dashChg <= 0) return;
   spendDash(f);
+  sfx('dash');
   var mv = (f.pid === myPid) ? moveVecFromInput() : new THREE.Vector3(f.input.x, 0, f.input.z);
   if (mv.lengthSq() < .04) mv = facingVec(f); else mv.normalize();
   f.vel.add(mv.clone().multiplyScalar(CFG.dash.dist * 6));
@@ -922,6 +985,7 @@ function pressDash(){
   if (!canAct(f) || f.dashChg <= 0) return;
   if (MODE === 'client'){
     spendDash(f); /* 로컬 예측 */
+    sfx('dash');
     var mv = moveVecFromInput();
     if (mv.lengthSq() < .04) mv = facingVec(f); else mv.normalize();
     f.vel.add(mv.clone().multiplyScalar(CFG.dash.dist * 6));
@@ -970,6 +1034,72 @@ function recalcHostMeta(){
 /* ══ 3단계: 기술·구역·아이템 시스템 ══════════ */
 var PROJ = [], GZ = [], TELE = [], ITEMS = [], FXQ = [], DELAY = [];
 var projSeq = 0, itemSeq = 0, itemAcc = 0, blurT = 0;
+/* ── 4단계: WebAudio 합성 효과음 + 밈 대사 배너 ── */
+var AC = null, noiseBuf = null;
+function ac(){
+  if (!AC){ try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+  if (AC && AC.state === 'suspended'){ try { AC.resume(); } catch(e){} }
+  return AC;
+}
+addEventListener('pointerdown', function(){ ac(); }, { passive: true });
+function tone(freq, dur, type, vol, slide, delay){
+  var a = AC; if (!a) return;
+  var t0 = a.currentTime + (delay || 0);
+  var o = a.createOscillator(), g = a.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t0);
+  if (slide) o.frequency.linearRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(.001, t0 + dur);
+  o.connect(g); g.connect(a.destination);
+  o.start(t0); o.stop(t0 + dur + .02);
+}
+function noiseS(dur, vol, cut, delay){
+  var a = AC; if (!a) return;
+  if (!noiseBuf){
+    noiseBuf = a.createBuffer(1, Math.floor(a.sampleRate * .5), a.sampleRate);
+    var ch = noiseBuf.getChannelData(0);
+    for (var i=0;i<ch.length;i++) ch[i] = Math.random()*2 - 1;
+  }
+  var t0 = a.currentTime + (delay || 0);
+  var src = a.createBufferSource(); src.buffer = noiseBuf;
+  var fl = a.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = cut || 1000;
+  var g = a.createGain();
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(.001, t0 + dur);
+  src.connect(fl); fl.connect(g); g.connect(a.destination);
+  src.start(t0); src.stop(t0 + dur + .02);
+}
+function sfx(n){
+  var chk = $('optSnd'); if (chk && !chk.checked) return;
+  if (!ac()) return;
+  if (n === 'hit'){ noiseS(.07,.22,1100); tone(170,.07,'square',.1,-60); }
+  else if (n === 'big'){ noiseS(.13,.32,650); tone(95,.16,'square',.17,-35); }
+  else if (n === 'ko'){ noiseS(.4,.42,420); tone(62,.5,'sawtooth',.2,-22); }
+  else if (n === 'dash'){ noiseS(.11,.12,2600); }
+  else if (n === 'cast'){ tone(540,.08,'triangle',.1,220); }
+  else if (n === 'full'){ tone(980,.1,'sine',.12,80); tone(1470,.12,'sine',.08,0,.07); }
+  else if (n === 'tele'){ tone(240,.16,'sawtooth',.07); tone(240,.16,'sawtooth',.07,0,.24); }
+  else if (n === 'boom'){ noiseS(.45,.45,340); tone(52,.55,'sine',.24,-14); }
+  else if (n === 'item'){ tone(880,.07,'sine',.1); tone(1320,.1,'sine',.1,0,.08); }
+  else if (n === 'parry'){ tone(1250,.1,'square',.12,-350); }
+}
+var KOLINES = [
+  ['요즘 젊은것들은 맷집이 약해…', '어르신 행차시다!'],
+  ['작품 완성.', '소스 맛이 어때?'],
+  ['DELIVERED.', 'I am American!'],
+  ['이건 판정승이지.', '거울 좀 보고 와'],
+  ['풀악셀 밟았을 뿐이야', '견적 나왔네 — 전손.'],
+  ['존버는 승리한다', '상한가 갑니다']
+];
+var quoteT = null;
+function showQuote(txt){
+  var q = $('quote');
+  q.textContent = txt;
+  q.classList.remove('pop'); void q.offsetWidth; q.classList.add('pop');
+  clearTimeout(quoteT);
+  quoteT = setTimeout(function(){ q.classList.remove('pop'); }, 1900);
+}
 var SKBT = ['s1','s2','s3','bUlt'].map(function(id){
   var b = $(id); return { lab: b.querySelector('.lab'), cd: b.querySelector('.cd') };
 });
@@ -1013,22 +1143,24 @@ function trySkill(f, i){
 }
 function skBroadcast(f, i, extra){
   var d = { e:'sk', p:f.pid, i:i, x:+f.pos.x.toFixed(2), z:+f.pos.z.toFixed(2), yw:+f.yaw.toFixed(2) };
+  if (zoneCi(f.pos) === f.ci) d.hb = 1; /* 홈 구역 사용 — 연출용 */
   for (var k2 in extra) d[k2] = extra[k2];
   netEvent(d);
   skillFx(d);
 }
 function execSkill(f, i, S){
   var d, t;
+  var dMul = zoneCi(f.pos) === f.ci ? 1.15 : 1; /* 홈 버프: 기술 대미지 +15% */
   if (S.type === 'lash'){
     aimDir(f, S.range + 1.5);
     skBroadcast(f, i, {});
     t = nearestEnemy(f, S.range);
-    if (t) applyHit(f, t, { dmg:S.dmg, kb:2, type:'skill' });
+    if (t) applyHit(f, t, { dmg: Math.round(S.dmg*dMul*10)/10, kb:2, type:'skill' });
   }
   else if (S.type === 'proj'){
     d = aimDir(f, 14);
     var id = 'p' + (projSeq++) + f.pid.slice(-3);
-    spawnProj({ id:id, x:f.pos.x, z:f.pos.z, dx:d.x, dz:d.z, p:f.pid, i:i }, S, false);
+    spawnProj({ id:id, x:f.pos.x, z:f.pos.z, dx:d.x, dz:d.z, p:f.pid, i:i, mul:dMul }, S, false);
     skBroadcast(f, i, { id:id, dx:+d.x.toFixed(3), dz:+d.z.toFixed(3) });
   }
   else if (S.type === 'dash'){
@@ -1036,7 +1168,7 @@ function execSkill(f, i, S){
     f.vel.add(dir2.multiplyScalar(Math.abs(S.dist) * 6));
     if (S.inv) f.inv = Math.max(f.inv, S.inv);
     if (S.spd){ f.spdT = S.spdT || 1; f.spdPct = S.spd; }
-    if (S.dmg) f.dash = { until: time + .35, dmg:S.dmg, kb:S.kb || 3, hit:{} };
+    if (S.dmg) f.dash = { until: time + .35, dmg: Math.round(S.dmg*dMul*10)/10, kb:S.kb || 3, hit:{} };
     skBroadcast(f, i, {});
   }
   else if (S.type === 'buff'){
@@ -1071,7 +1203,7 @@ function execSkill(f, i, S){
     t = nearestEnemy(f, S.range);
     skBroadcast(f, i, t ? { tx:+t.pos.x.toFixed(1), tz:+t.pos.z.toFixed(1) } : {});
     if (t){
-      applyHit(f, t, { dmg:S.dmg, kb:0, type:'skill' });
+      applyHit(f, t, { dmg: Math.round(S.dmg*dMul*10)/10, kb:0, type:'skill' });
       var pd = f.pos.clone().sub(t.pos); pd.y = 0;
       var dist3 = Math.max(0, pd.length() - 1.4);
       t.vel.add(pd.normalize().multiplyScalar(dist3 * 5.5));
@@ -1090,11 +1222,11 @@ function execSkill(f, i, S){
   }
   else if (S.type === 'aoe'){
     var c = S.fwd ? f.pos.clone().add(facingVec(f).multiplyScalar(S.fwd)) : f.pos.clone();
-    TELE.push({ kind:'aoe', cx:c.x, cz:c.z, yw:f.yaw, at: time + S.tele, p:f.pid, i:i, ci:f.ci, S:S });
+    TELE.push({ kind:'aoe', cx:c.x, cz:c.z, yw:f.yaw, at: time + S.tele, p:f.pid, i:i, ci:f.ci, S:S, mul:dMul });
     skBroadcast(f, i, { cx:+c.x.toFixed(1), cz:+c.z.toFixed(1) });
   }
   else if (S.type === 'line'){
-    TELE.push({ kind:'line', cx:f.pos.x, cz:f.pos.z, yw:f.yaw, at: time + S.tele, p:f.pid, i:i, ci:f.ci, S:S });
+    TELE.push({ kind:'line', cx:f.pos.x, cz:f.pos.z, yw:f.yaw, at: time + S.tele, p:f.pid, i:i, ci:f.ci, S:S, mul:dMul });
     skBroadcast(f, i, {});
   }
 }
@@ -1102,6 +1234,8 @@ function execSkill(f, i, S){
 function skillFx(d){
   var f = fighters[d.p]; if (!f || f.ci == null) return;
   var S = SKILLS[f.ci][d.i];
+  sfx('cast');
+  if (d.hb){ mkRing(d.x, d.z, 1.6, CHARS[f.ci].acc, .5, true); spawnDmg(f.pos, '홈 버프!', 'info'); }
   if (S.type === 'lash') mkBeam(d.x, d.z, d.yw, S.range, 0xd0404a, .3);
   else if (S.type === 'proj'){ if (!authMode()) spawnProj({ id:d.id, x:d.x, z:d.z, dx:d.dx, dz:d.dz, p:d.p, i:d.i }, S, true); }
   else if (S.type === 'dash') mkRing(d.x, d.z, 1, 0xffffff, .3, true);
@@ -1114,8 +1248,8 @@ function skillFx(d){
     mkRing(d.x, d.z, 1, 0xa05fc0, .35, true);
   }
   else if (S.type === 'zone'){ if (!authMode()) spawnGZ(d.id, d.x, d.z, S, null); }
-  else if (S.type === 'aoe') mkRing(d.cx, d.cz, S.r, 0xff5540, S.tele, false);
-  else if (S.type === 'line') mkLineTele(d.x, d.z, d.yw, S.len, S.w, S.tele);
+  else if (S.type === 'aoe'){ mkRing(d.cx, d.cz, S.r, 0xff5540, S.tele, false); sfx('tele'); }
+  else if (S.type === 'line'){ mkLineTele(d.x, d.z, d.yw, S.len, S.w, S.tele); sfx('tele'); }
 }
 function stFx(ev){
   var f = fighters[ev.tg]; if (!f) return;
@@ -1127,6 +1261,7 @@ function stFx(ev){
 function impactFx(ci, i, cx, cz, yw, byName){
   if (ci == null) return;
   var S = SKILLS[ci][i];
+  sfx('boom');
   if (S.type === 'line'){
     var car = new THREE.Mesh(new THREE.BoxGeometry(1.5,.9,2.8), new THREE.MeshLambertMaterial({ color: 0x2f8f5f }));
     car.position.set(cx, .55, cz); car.rotation.y = yw;
@@ -1139,7 +1274,7 @@ function impactFx(ci, i, cx, cz, yw, byName){
     if (S.prop === 'pizza') dropProp('pizza', cx, cz);
     if (S.flash) doFlash();
   }
-  if (S.quote) addFeed('<b>' + (byName || '') + '</b> “' + S.quote + '”');
+  if (S.quote){ addFeed('<b>' + (byName || '') + '</b> “' + S.quote + '”'); showQuote('“' + S.quote + '”'); }
   var me2 = me();
   if (me2 && Math.hypot(me2.pos.x - cx, me2.pos.z - cz) < (S.r || 10) + 8){
     if ($('optShake').checked) shakeAmp = Math.min(1.4, shakeAmp + .8);
@@ -1183,7 +1318,7 @@ function spawnProj(dd, S, vis){
   m.position.set(dd.x, .75, dd.z);
   m.rotation.y = Math.atan2(dd.dx, dd.dz);
   scene.add(m);
-  PROJ.push({ id:dd.id, x:dd.x, z:dd.z, dx:dd.dx, dz:dd.dz, p:dd.p, i:dd.i, S:S, life:S.life, mesh:m, vis:!!vis });
+  PROJ.push({ id:dd.id, x:dd.x, z:dd.z, dx:dd.dx, dz:dd.dz, p:dd.p, i:dd.i, S:S, life:S.life, mesh:m, vis:!!vis, mul:dd.mul || 1 });
 }
 function findProj(id){ for (var i=0;i<PROJ.length;i++) if (PROJ[i].id === id) return PROJ[i]; return null; }
 function killProj(id, burst){
@@ -1212,6 +1347,7 @@ function pickItemFx(id, pid){
   for (var i=ITEMS.length-1;i>=0;i--) if (ITEMS[i].id === id){ scene.remove(ITEMS[i].mesh); ITEMS.splice(i,1); break; }
   var fp = fighters[pid];
   if (fp){
+    sfx('item');
     fp.hp = Math.min(fp.hpMax, fp.hp + CFG.item.heal);
     spawnDmg(fp.pos, '+' + CFG.item.heal, 'info');
     addFeed(dispName(pid) + ' 회복 아이템 <b>+' + CFG.item.heal + '</b>');
@@ -1300,7 +1436,7 @@ function stepSystems(dt){
         }
         var owner = fighters[pr.p];
         if (owner){
-          applyHit(owner, o3, { dmg: pr.S.dmg, kb: 2.5, type:'skill' });
+          applyHit(owner, o3, { dmg: Math.round(pr.S.dmg * pr.mul * 10)/10, kb: 2.5, type:'skill' });
           if (pr.S.slow){ o3.slowT = pr.S.slowT; o3.slowPct = pr.S.slow; netEvent({ e:'st', tg:o3.pid, k:'slow', t:pr.S.slowT, p2:pr.S.slow }); }
           if (pr.S.blur){ if (o3.pid === myPid) blurT = pr.S.blur; netEvent({ e:'st', tg:o3.pid, k:'blur', t:pr.S.blur }); }
         }
@@ -1335,7 +1471,7 @@ function stepSystems(dt){
           var oa = all[j];
           if (oa === owner2 || oa.state === 'down' || oa.inv > 0) continue;
           if (Math.hypot(oa.pos.x - te.cx, oa.pos.z - te.cz) > te.S.r) continue;
-          applyHit(owner2, oa, { dmg: te.S.dmg, kb: 5, type:'skill' });
+          applyHit(owner2, oa, { dmg: Math.round(te.S.dmg * te.mul * 10)/10, kb: 5, type:'skill' });
           if (te.S.stun && oa.hp > 0){ applyStun(oa, te.S.stun); netEvent({ e:'st', tg:oa.pid, k:'stun', t:te.S.stun }); }
         }
       } else {
@@ -1346,7 +1482,7 @@ function stepSystems(dt){
           var rx = ol.pos.x - te.cx, rz = ol.pos.z - te.cz;
           var along = rx*dx + rz*dz, perp = Math.abs(rx*dz - rz*dx);
           if (along < -1 || along > te.S.len || perp > te.S.w/2) continue;
-          applyHit(owner2, ol, { dmg: te.S.dmg, kb: 6, type:'skill' });
+          applyHit(owner2, ol, { dmg: Math.round(te.S.dmg * te.mul * 10)/10, kb: 6, type:'skill' });
         }
       }
     }
@@ -1864,7 +2000,7 @@ function onNetEvent(ev){
   else if (ev.e === 'heal'){ var fh = fighters[ev.tg]; if (fh){ fh.hp = Math.min(fh.hpMax, fh.hp + ev.d); spawnDmg(fh.pos, '+'+ev.d, 'info'); } }
   else if (ev.e === 'px'){ killProj(ev.id, true); }
   else if (ev.e === 'pr'){ var pr2 = findProj(ev.id); if (pr2){ pr2.dx *= -1; pr2.dz *= -1; pr2.life = pr2.S.life; spawnDmg(pr2.mesh.position, 'REFLECT!', 'info'); } }
-  else if (ev.e === 'da'){ if (ev.p !== myPid) mkRing(ev.x, ev.z, .9, 0x9fd8ff, .3, true); }
+  else if (ev.e === 'da'){ if (ev.p !== myPid){ mkRing(ev.x, ev.z, .9, 0x9fd8ff, .3, true); sfx('dash'); } }
   else if (ev.e === 'it'){ spawnItem(ev.id, ev.x, ev.z); }
   else if (ev.e === 'itg'){ pickItemFx(ev.id, ev.p); }
   else if (ev.e === 'sp'){
@@ -2297,6 +2433,7 @@ function loop(){
     : 'none';
   if (charge.on){
     var chR = chargeRatio();
+    if (chR >= 1 && !charge.pinged){ charge.pinged = true; sfx('full'); }
     handCd.style.background = 'conic-gradient(rgba(255,180,84,' + (chR >= 1 ? '.95' : '.7') + ') ' + (chR*360) + 'deg, rgba(0,0,0,.35) 0)';
   } else {
     var cdh = f0 ? Math.max(0, f0.handReady - time) / CFG.hand.cd : 0;
