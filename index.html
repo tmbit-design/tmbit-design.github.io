@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#171c2a">
+<meta name="description" content="G.B.P 오락실 — 친구들과 만드는 브라우저 게임 모음">
+<title>G.B.P Arcade</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap">
+<style>
+/* G.B.P 오락실 허브 — 네온 간판 톤의 다크 아케이드, 단일 테마 */
+:root{
+  --bg:#171c2a; --panel:#1f2636; --brd:rgba(255,255,255,.14);
+  --ink:#f3f5fa; --quiet:#a7afc2; --accent:#ffb454;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(90% 80% at 50% 0%,#2a3348 0%,var(--bg) 60%);color:var(--ink);
+  font:15px/1.6 system-ui,-apple-system,'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;
+  display:flex;flex-direction:column;align-items:center;
+  padding:48px max(16px, env(safe-area-inset-right,0px)) 32px max(16px, env(safe-area-inset-left,0px))}
+.bhs{font-family:'Black Han Sans',system-ui,sans-serif;font-weight:400}
+header{text-align:center}
+h1{margin:0;font-size:clamp(34px,9vw,56px);letter-spacing:.02em;text-shadow:0 4px 0 rgba(0,0,0,.4)}
+h1 em{font-style:normal;color:var(--accent)}
+.sub{color:var(--quiet);letter-spacing:.22em;font-size:12.5px;margin-top:6px}
+main{width:min(560px,100%);margin-top:34px;display:flex;flex-direction:column;gap:14px}
+.game{display:flex;align-items:center;gap:16px;background:var(--panel);border:1px solid var(--brd);
+  border-radius:16px;padding:16px 18px;text-decoration:none;color:var(--ink);
+  transition:transform .12s ease,border-color .12s ease}
+.game:hover{transform:translateY(-2px);border-color:var(--accent)}
+.game .ico{width:54px;height:54px;border-radius:12px;background:rgba(255,180,84,.14);
+  border:1px solid rgba(255,180,84,.4);display:flex;align-items:center;justify-content:center;
+  font-size:26px;flex:none}
+.game .tt{font-size:19px}
+.game .tt small{display:block;font-size:12px;color:var(--quiet);margin-top:2px;font-family:system-ui,sans-serif}
+.game .go{margin-left:auto;color:var(--accent);font-size:22px;flex:none}
+.tip{margin-top:22px;color:var(--quiet);font-size:12.5px;text-align:center;max-width:420px}
+.tip b{color:var(--ink)}
+footer{margin-top:auto;padding-top:36px;color:var(--quiet);font-size:11.5px;letter-spacing:.14em}
+</style>
+</head>
+<body>
+<header>
+  <h1 class="bhs"><em>G.B.P</em> ARCADE</h1>
+  <div class="sub">KINGDOM OF KINGBADEM</div>
+</header>
+<main>
+  <a class="game" href="./gbp/">
+    <span class="ico">🥊</span>
+    <span class="tt bhs">Tekken G.B.P Fighters<small>온라인 6인 난투 · 2단계 빌드</small></span>
+    <span class="go">▶</span>
+  </a>
+</main>
+<p class="tip">📱 폰에서 <b>홈 화면에 추가</b>하면 상단 바 없이 앱처럼 실행돼.<br>새 게임은 여기에 계속 추가될 예정!</p>
+<footer>G.B.P — SIX FRIENDS, ONE ARENA</footer>
+</body>
+</html>
