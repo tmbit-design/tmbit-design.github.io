@@ -290,6 +290,7 @@ input::placeholder{color:var(--quiet)}
     <div class="msg" id="netMsg"></div>
     <div class="chrs" id="netChars" hidden></div>
     <button class="go2 bhs" id="netGo" hidden>이 캐릭터로 입장</button>
+    <button class="home" id="netCopy" hidden>🔗 게임 링크 복사</button>
     <button class="home" id="netHome" hidden>처음으로</button>
   </div>
 </div>
@@ -893,6 +894,12 @@ function clientUpdateRemote(f, dt){
 }
 
 /* ── 네트워크 ─────────────────────────── */
+var GAME_URL = 'https://tmbit-design.github.io/gbp/';
+var RTC_OK = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection);
+var INCOMPAT_MSG = '<b>이 환경에선 실시간 연결(WebRTC)이 꺼져 있어.</b><br>' +
+  'claude.ai 미리보기 · 카카오톡 같은 인앱 브라우저가 그래. 링크를 복사해서 ' +
+  '<b>크롬 · 사파리 · 삼성인터넷</b>으로 열면 온라인이 돼! (연습 모드는 여기서도 가능)' +
+  '<br><small style="color:var(--quiet)">tmbit-design.github.io/gbp</small>';
 var peer = null, conns = {}, hostConn = null;
 var roomCode = null, pingMs = null, lastPingAt = 0;
 var sendAcc = 0, inAcc = 0, pingAcc = 0;
@@ -1095,14 +1102,17 @@ function hostLeft(){
 function netFail(err){
   clearTimeout(joinTimeout);
   var t = err && err.type;
-  var msg;
-  if (t === 'network' || t === 'socket-error' || t === 'server-error' || t === 'socket-closed')
-    msg = '<b>온라인 연결이 차단된 환경이야.</b><br>claude.ai 미리보기 안에서는 온라인 대전이 막혀 있어 — 배포된 게임 링크를 폰/PC 브라우저로 열어서 시도해줘. (연습 모드는 여기서도 가능!)';
+  if (t === 'browser-incompatible'){ showNetOv(INCOMPAT_MSG, { home:true, spin:false, copy:true }); return; }
+  var msg, copy = false;
+  if (t === 'network' || t === 'socket-error' || t === 'server-error' || t === 'socket-closed'){
+    msg = '<b>온라인 연결이 차단된 환경이야.</b><br>링크를 복사해서 폰/PC의 일반 브라우저로 열어 시도해줘. (연습 모드는 여기서도 가능!)';
+    copy = true;
+  }
   else if (t === 'peer-unavailable') msg = '<b>그 코드의 방을 찾을 수 없어.</b><br>코드를 다시 확인하거나, 방장이 방을 열어뒀는지 확인해줘.';
   else if (t === 'timeout') msg = '<b>연결 시간 초과.</b><br>코드와 네트워크 상태를 확인하고 다시 시도해줘.';
   else if (t === 'full') msg = '<b>방이 가득 찼어 (최대 6명).</b>';
   else msg = '<b>연결 오류.</b><br>' + esc(t || (err && err.message) || '알 수 없는 오류');
-  showNetOv(msg, { home:true, spin:false });
+  showNetOv(msg, { home:true, spin:false, copy:copy });
 }
 
 /* ── HUD: 점수판/방 칩/네트 오버레이 ────── */
@@ -1144,11 +1154,20 @@ function showNetOv(html, opt){
   $('netMsg').innerHTML = html;
   $('netSpin').hidden = opt.spin === false;
   $('netHome').hidden = !opt.home;
+  $('netCopy').hidden = !opt.copy;
+  $('netGo').hidden = true;
   $('netChars').hidden = true;
   $('netOv').classList.add('show');
 }
 function hideNetOv(){ $('netOv').classList.remove('show'); }
-$('netHome').addEventListener('click', function(){ location.reload(); });
+$('netHome').addEventListener('click', function(){
+  if (started || MODE) location.reload(); else hideNetOv();
+});
+$('netCopy').addEventListener('click', function(){
+  var done = function(){ toast('게임 링크 복사됨!'); };
+  try { navigator.clipboard.writeText(GAME_URL).then(done, function(){ toast(GAME_URL); }); }
+  catch(e){ toast(GAME_URL); }
+});
 var joinCi = null;
 function showJoinPicker(taken, count, conflict){
   joinCi = (myCi != null && taken.indexOf(myCi) < 0) ? myCi : null;
@@ -1156,7 +1175,7 @@ function showJoinPicker(taken, count, conflict){
     ? '앗, 방금 선택이 겹쳤어! 사용 중인 캐릭터는 <b>회색</b>이야 — 다른 캐릭터로 입장해줘.'
     : '방 <b>' + roomCode + '</b>' + (count ? ' · 현재 ' + count + '명' : '') +
       '<br>캐릭터를 확인하고 입장! <small>(회색 = 사용 중)</small>';
-  $('netSpin').hidden = true; $('netHome').hidden = true;
+  $('netSpin').hidden = true; $('netHome').hidden = true; $('netCopy').hidden = true;
   var box = $('netChars'); box.hidden = false;
   renderChars(box, taken, joinCi, function(ci){ joinCi = ci; $('netGo').disabled = false; });
   var go = $('netGo'); go.hidden = false; go.disabled = (joinCi == null);
@@ -1225,8 +1244,15 @@ $('mPortrait').addEventListener('click', function(){ selMode='portrait'; openCon
 $('mLandscape').addEventListener('click', function(){ selMode='landscape'; openConfirmMsgRefresh(); });
 function openConfirmMsgRefresh(){ if (pendingAction) openConfirm(); else updateModeBtns(); }
 $('aPractice').addEventListener('click', function(){ if (validateLobby(false)){ pendingAction={kind:'practice'}; openConfirm(); } });
-$('aHost').addEventListener('click', function(){ if (validateLobby(false)){ pendingAction={kind:'host'}; openConfirm(); } });
-$('aJoin').addEventListener('click', function(){ if (validateLobby(true)) openConfirm(); });
+$('aHost').addEventListener('click', function(){
+  if (!RTC_OK){ showNetOv(INCOMPAT_MSG, { home:true, spin:false, copy:true }); return; }
+  if (validateLobby(false)){ pendingAction={kind:'host'}; openConfirm(); }
+});
+$('aJoin').addEventListener('click', function(){
+  if (!RTC_OK){ showNetOv(INCOMPAT_MSG, { home:true, spin:false, copy:true }); return; }
+  if (validateLobby(true)) openConfirm();
+});
+if (!RTC_OK){ $('aHost').style.opacity = .55; var jb = document.querySelector('.joinBox'); if (jb) jb.style.opacity = .55; }
 function closeConfirm(){ pendingAction = null; $('confirm').classList.remove('show'); }
 $('confirmCancel').addEventListener('click', closeConfirm);
 $('confirm').addEventListener('pointerdown', function(e){
