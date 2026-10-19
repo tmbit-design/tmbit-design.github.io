@@ -104,6 +104,9 @@ input::placeholder{color:var(--quiet)}
 #bFoot{width:86px;height:86px;right:calc(134px + var(--sr));bottom:calc(4px + var(--sb))}
 .skill{width:56px;height:56px;color:var(--disabled)}
 .skill .lab{font-size:17px}
+#bDash{width:60px;height:60px;right:calc(96px + var(--sr));bottom:calc(132px + var(--sb));
+  border-color:rgba(120,190,255,.5)}
+#bDash .lab{font-size:15px;color:#bfe0ff}
 #s1{right:calc(196px + var(--sr));bottom:calc(86px + var(--sb))}
 #s2{right:calc(160px + var(--sr));bottom:calc(158px + var(--sb))}
 #s3{right:calc(92px  + var(--sr));bottom:calc(204px + var(--sb))}
@@ -117,6 +120,8 @@ input::placeholder{color:var(--quiet)}
   #bFoot{width:70px;height:70px;right:calc(110px + var(--sr))}
   .skill{width:46px;height:46px}
   .skill .lab{font-size:15px}
+  #bDash{width:48px;height:48px;right:calc(78px + var(--sr));bottom:calc(106px + var(--sb))}
+  #bDash .lab{font-size:13px}
   #s1{right:calc(160px + var(--sr));bottom:calc(66px + var(--sb))}
   #s2{right:calc(130px + var(--sr));bottom:calc(122px + var(--sb))}
   #s3{right:calc(74px + var(--sr));bottom:calc(158px + var(--sb))}
@@ -249,12 +254,13 @@ input::placeholder{color:var(--quiet)}
   <button id="flipMode">가로/세로 전환</button>
   <button id="fsBtn">⛶ 전체화면 켜기/끄기</button>
   <button id="leaveBtn">나가기 (처음으로)</button>
-  <div class="keys">PC 조작 — 이동 <b>WASD/방향키</b> · 손 <b>J</b>(꾹=충전) · 발 <b>K</b> · 기술 <b>U I O P</b></div>
+  <div class="keys">PC 조작 — 이동 <b>WASD/방향키</b> · 손 <b>J</b>(꾹=충전) · 발 <b>K</b> · 대시 <b>Space</b> · 기술 <b>U I O P</b></div>
 </div>
 
 <div id="joyZone"></div>
 <button class="btn" id="bHand"><span class="lab bhs">손</span><span class="key">J · 꾹 충전</span><span class="cd" id="handCd"></span></button>
 <button class="btn" id="bFoot"><span class="lab bhs">발</span><span class="key">K</span><span class="cd" id="footCd"></span></button>
+<button class="btn" id="bDash"><span class="lab bhs">대시</span><span class="key">Space</span><span class="cd" id="dashCd"></span></button>
 <button class="btn skill" id="s1"><span class="lab bhs">①</span><span class="cd"></span></button>
 <button class="btn skill" id="s2"><span class="lab bhs">②</span><span class="cd"></span></button>
 <button class="btn skill" id="s3"><span class="lab bhs">③</span><span class="cd"></span></button>
@@ -320,6 +326,7 @@ var CFG = {
   staggerT: .2, armorT: .5, hitstop: .05,
   respawn: 4, invuln: 2,
   snapHz: .05, inHz: .034,
+  dash: { dist: 4, cd: 2 },
   zone: { regen: 5, regenDelay: 3, drain: 2, floor: 10 },
   item: { interval: 20, heal: 25 }
 };
@@ -586,7 +593,7 @@ function makeFighter(pid, name, ci){
     state:'idle', st:0, atk:null, footReady:0, handReady:0, charging:false,
     flashT:0, inv:0, armorT:0, consec:0, lastStag:-9, downT:0, walkPhase:0,
     slowT:0, slowPct:0, spdT:0, spdPct:0, hasteT:0, atkLockT:0, parryT:0, reflectT:0,
-    stunT:0, castT:0, dotT:0, dotAcc:0, dotPs:0, dotBy:null, skCd:[0,0,0,0], lastCombat:-9, zoneAcc:0,
+    stunT:0, castT:0, dotT:0, dotAcc:0, dotPs:0, dotBy:null, skCd:[0,0,0,0], lastCombat:-9, zoneAcc:0, dashReady:0,
     input:{x:0,z:0}, nx:sp.x, nz:sp.z, nyaw:sp.yaw, lastA:0,
     spawnPos:new THREE.Vector3(sp.x,0,sp.z), wanderTo:null, wanderWait:0
   };
@@ -603,7 +610,7 @@ function me(){ return fighters[myPid]; }
 /* ── HUD 참조/유틸 ─────────────────────── */
 var $ = function(id){ return document.getElementById(id); };
 var feed = $('feed'), comboEl = $('combo'), banner = $('banner'),
-    toastEl = $('toast'), footCd = $('footCd'), handCd = $('handCd'), fpsEl = $('fps');
+    toastEl = $('toast'), footCd = $('footCd'), handCd = $('handCd'), dashCd = $('dashCd'), fpsEl = $('fps');
 function addFeed(html){
   var d = document.createElement('div'); d.className = 'line'; d.innerHTML = html;
   feed.prepend(d);
@@ -651,6 +658,7 @@ addEventListener('keydown', function(e){
   var k = e.key.toLowerCase(); keys[k] = true;
   if (k === 'j') startHandCharge();
   if (k === 'k') pressFoot();
+  if (k === ' '){ e.preventDefault(); pressDash(); }
   if (k==='u') pressSkill(0); else if (k==='i') pressSkill(1);
   else if (k==='o') pressSkill(2); else if (k==='p') pressSkill(3);
 });
@@ -703,6 +711,7 @@ function bindBtn(id, down, up){
 }
 bindBtn('bHand', startHandCharge, releaseHandPunch);
 bindBtn('bFoot', pressFoot);
+bindBtn('bDash', pressDash);
 ['s1','s2','s3','bUlt'].forEach(function(id, si){
   bindBtn(id, function(){ pressSkill(si); });
 });
@@ -880,6 +889,31 @@ function pressFoot(){
     f.vel.add(facingVec(f).multiplyScalar(1.6));
     atkQ.push('f');
   } else tryFoot(f);
+}
+
+/* 공용 대시 — 이동(스틱) 방향으로 4m 순간 가속, 쿨 2초, 무적 없음 */
+function tryDash(f){
+  if (!canAct(f) || time < f.dashReady) return;
+  f.dashReady = time + CFG.dash.cd;
+  var mv = (f.pid === myPid) ? moveVecFromInput() : new THREE.Vector3(f.input.x, 0, f.input.z);
+  if (mv.lengthSq() < .04) mv = facingVec(f); else mv.normalize();
+  f.vel.add(mv.clone().multiplyScalar(CFG.dash.dist * 6));
+  f.yaw = Math.atan2(mv.x, mv.z);
+  mkRing(f.pos.x, f.pos.z, .9, 0x9fd8ff, .3, true);
+  netEvent({ e:'da', p:f.pid, x:+f.pos.x.toFixed(1), z:+f.pos.z.toFixed(1) });
+}
+function pressDash(){
+  if (!started) return;
+  var f = me(); if (!f || !canAct(f) || time < f.dashReady) return;
+  if (MODE === 'client'){
+    f.dashReady = time + CFG.dash.cd;
+    var mv = moveVecFromInput();
+    if (mv.lengthSq() < .04) mv = facingVec(f); else mv.normalize();
+    f.vel.add(mv.clone().multiplyScalar(CFG.dash.dist * 6)); /* 로컬 예측 */
+    f.yaw = Math.atan2(mv.x, mv.z);
+    mkRing(f.pos.x, f.pos.z, .9, 0x9fd8ff, .3, true);
+    atkQ.push('d');
+  } else tryDash(f);
 }
 
 /* ── 핑순 승계 — 참가자들의 핑을 모아 승계 순서(hostOrder)를 핑 낮은 순으로 재정렬해 전파 */
@@ -1705,6 +1739,7 @@ function onHostData(c, msg){
       else if (cmd.charAt(0) === 'k'){
         if (!tryClientAtk(f, cmd, 0)) f.pendAtk = { k:cmd, r:0, exp: time + .35 };
       }
+      else if (cmd === 'd') tryDash(f); /* 대시는 버퍼 없이 즉시 (늦은 회피는 의미 없음) */
     }
   }
   else if (msg.t === 'rejoin'){
@@ -1813,6 +1848,7 @@ function onNetEvent(ev){
   else if (ev.e === 'heal'){ var fh = fighters[ev.tg]; if (fh){ fh.hp = Math.min(fh.hpMax, fh.hp + ev.d); spawnDmg(fh.pos, '+'+ev.d, 'info'); } }
   else if (ev.e === 'px'){ killProj(ev.id, true); }
   else if (ev.e === 'pr'){ var pr2 = findProj(ev.id); if (pr2){ pr2.dx *= -1; pr2.dz *= -1; pr2.life = pr2.S.life; spawnDmg(pr2.mesh.position, 'REFLECT!', 'info'); } }
+  else if (ev.e === 'da'){ if (ev.p !== myPid) mkRing(ev.x, ev.z, .9, 0x9fd8ff, .3, true); }
   else if (ev.e === 'it'){ spawnItem(ev.id, ev.x, ev.z); }
   else if (ev.e === 'itg'){ pickItemFx(ev.id, ev.p); }
   else if (ev.e === 'sp'){
@@ -2252,6 +2288,10 @@ function loop(){
       ? 'conic-gradient(rgba(0,0,0,.6) ' + (cdh*360) + 'deg, transparent 0)'
       : 'none';
   }
+  var cdd = f0 ? Math.max(0, f0.dashReady - time) / CFG.dash.cd : 0;
+  dashCd.style.background = cdd > 0
+    ? 'conic-gradient(rgba(0,0,0,.6) ' + (cdd*360) + 'deg, transparent 0)'
+    : 'none';
   updateSkillHud(f0, realDt);
 
   updateCamera(dt, realDt);
